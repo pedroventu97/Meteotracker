@@ -1,0 +1,22 @@
+physical_limits:
+  temp_min_c: -40.0
+  temp_max_c: 60.0
+  humidity_min_pct: 0.0
+  humidity_max_pct: 100.0
+  pressure_min_mbar: 850.0
+  pressure_max_mbar: 1100.0
+
+gps:
+  max_speed_kmh_absolute: 150.0
+  gps_jump_distance_m: 80.0
+  gps_jump_dt_s: 2.0
+  acceleration_ms2_abs: 5.0
+
+warmup:
+  window_size: 5
+  slope_threshold_c_per_s: 0.02
+  min_stable_seconds: 60
+
+filtering:
+  strict_keep_threshold: 0
+  relaxed_keep_threshold: 1

@@ -1,0 +1,47 @@
+# Python environments
+.venv/
+venv/
+env/
+
+# Python cache
+__pycache__/
+*.py[cod]
+*$py.class
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.coverage
+htmlcov/
+
+# IDE and operating system
+.vscode/
+.idea/
+.DS_Store
+Thumbs.db
+desktop.ini
+
+# Logs and temporary files
+logs/
+*.log
+*.tmp
+*.temp
+~$*
+*.bak
+
+# Raw Meteotracker data
+data/raw/**/*.csv
+data/raw/**/*.zip
+
+# Full per-campaign generated outputs
+outputs/recommended/*/
+outputs/run*/
+outputs/temp*/
+outputs/verification*/
+
+# Generated large or binary outputs
+*.parquet
+
+# Local archives and backups
+*.zip
+backup*/
+archive*/

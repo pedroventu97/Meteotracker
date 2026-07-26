@@ -1,0 +1,6 @@
+duplicate_group_id,duplicate_type,canonical_source_file,canonical_n_cols,redundant_source_files,redundant_n_cols,shared_n_rows
+dupgrp_01,byte-identical,03-04/20260304T08_41_51_mtdicambo_B6CCF894-DF13-BB20-B108-3C17F67FA94E_Bologna-Bologna (1).csv,42,02-28/20260304T08_41_51_mtdicambo_B6CCF894-DF13-BB20-B108-3C17F67FA94E_Bologna-Bologna (1).csv,42,2101
+dupgrp_02,reduced-column re-export,04-27/20260427T08_00_36_mtdicambo_AC4D162B317E_Bologna-Bologna (1).csv,43,04-27 moto/20260427T08_00_36_mtdicambo_AC4D162B317E_Bologna-Bologna.csv,5,1142
+dupgrp_03,reduced-column re-export,04-27/20260427T08_38_02_private_AC4D162B317E_Bologna-Bologna.csv,43,04-27 moto/20260427T08_38_02_private_AC4D162B317E_UNKNOWN-UNKNOWN.csv,5,772
+dupgrp_04,reduced-column re-export,05-19/20260519T08_17_35_mtdicambo_AC4D162B317E_Bologna-Bologna (1).csv,43,05-19/20260519T08_17_35_mtdicambo_AC4D162B317E_Bologna-Bologna.csv,5,1849
+dupgrp_05,reduced-column re-export,07-04 2025 moto/20250704T07_55_49_private_6D17FE6E-7C39-270E-9083-54ABA0F52166_Bologna-Bologna (2).csv,42,07-04 2025 moto/20250704T07_55_49_private_6D17FE6E-7C39-270E-9083-54ABA0F52166_Bologna-Bologna (3).csv,5,1055
