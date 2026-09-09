@@ -121,19 +121,23 @@ def write_geopackage(
         gdf.to_file(path, layer=layer_name, driver="GPKG")
 
     if memberships_df is not None:
-        with sqlite3.connect(path) as connection:
-            connection.execute('CREATE UNIQUE INDEX memberships_semantic_key ON point_segment_memberships '
-                               '(repeated_segment_id, segment_passage_id, source_file, source_row)')
-            connection.execute('CREATE UNIQUE INDEX memberships_id ON point_segment_memberships (membership_id)')
-            if match_support_df is not None:
-                # Native GeoPackage attributes table: provenance has no geometry.
-                connection.execute('PRAGMA foreign_keys = ON')
-                connection.execute('CREATE TABLE point_segment_match_support ('
-                                   'membership_id TEXT NOT NULL, supporting_match_id TEXT NOT NULL, '
-                                   'PRIMARY KEY (membership_id, supporting_match_id), '
-                                   'FOREIGN KEY (membership_id) REFERENCES point_segment_memberships(membership_id))')
-                connection.executemany('INSERT INTO point_segment_match_support VALUES (?, ?)',
-                                       match_support_df[['membership_id', 'supporting_match_id']].itertuples(index=False, name=None))
-                connection.execute("INSERT INTO gpkg_contents (table_name, data_type, identifier, description) "
-                                   "VALUES ('point_segment_match_support', 'attributes', 'point_segment_match_support', "
-                                   "'Match provenance for unique scientific point memberships')")
+        connection = sqlite3.connect(path)
+        try:
+            with connection:
+                connection.execute('CREATE UNIQUE INDEX memberships_semantic_key ON point_segment_memberships '
+                                   '(repeated_segment_id, segment_passage_id, source_file, source_row)')
+                connection.execute('CREATE UNIQUE INDEX memberships_id ON point_segment_memberships (membership_id)')
+                if match_support_df is not None:
+                    # Native GeoPackage attributes table: provenance has no geometry.
+                    connection.execute('PRAGMA foreign_keys = ON')
+                    connection.execute('CREATE TABLE point_segment_match_support ('
+                                       'membership_id TEXT NOT NULL, supporting_match_id TEXT NOT NULL, '
+                                       'PRIMARY KEY (membership_id, supporting_match_id), '
+                                       'FOREIGN KEY (membership_id) REFERENCES point_segment_memberships(membership_id))')
+                    connection.executemany('INSERT INTO point_segment_match_support VALUES (?, ?)',
+                                           match_support_df[['membership_id', 'supporting_match_id']].itertuples(index=False, name=None))
+                    connection.execute("INSERT INTO gpkg_contents (table_name, data_type, identifier, description) "
+                                       "VALUES ('point_segment_match_support', 'attributes', 'point_segment_match_support', "
+                                       "'Match provenance for unique scientific point memberships')")
+        finally:
+            connection.close()

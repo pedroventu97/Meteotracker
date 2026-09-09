@@ -117,6 +117,7 @@ class RepeatedRoutesCache:
             connection.execute("PRAGMA journal_mode=DELETE")
             connection.execute("CREATE TABLE IF NOT EXISTS pair_cache (cache_key TEXT PRIMARY KEY, envelope TEXT NOT NULL)")
         except sqlite3.DatabaseError:
+            connection.close()
             try:
                 corrupt_hash = sha256_file(self.pair_db_path)[:16]
             except OSError:
@@ -186,6 +187,12 @@ class RepeatedRoutesCache:
             self._pair_db.commit()
             self._pair_db.close()
             self._pair_db = None
+
+    def __enter__(self) -> "RepeatedRoutesCache":
+        return self
+
+    def __exit__(self, *_: object) -> None:
+        self.close()
 
     def write_run_manifest(self, payload: dict[str, Any]) -> None:
         envelope = {

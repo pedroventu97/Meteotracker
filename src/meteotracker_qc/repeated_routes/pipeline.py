@@ -151,6 +151,8 @@ def build_campaign_tracks(
         inventory_rows.append(inventory_row)
 
     inventory_df = build_campaign_inventory(inventory_rows)
+    if cache is not None:
+        cache.close()
     return inventory_df, standardized_by_campaign, campaign_tracks_by_id
 
 
@@ -227,12 +229,14 @@ def run_pipeline(
     comparison_df = build_comparison_opportunities(segments_df, passages_df, rr_config)
 
     if cache_dir is not None:
-        RepeatedRoutesCache(cache_dir).write_run_manifest({
+        run_cache = RepeatedRoutesCache(cache_dir)
+        run_cache.write_run_manifest({
             "campaign_ids": list(campaign_tracks_by_id),
             "track_cache_keys": track_cache_keys,
             "cache_stats": cache_stats,
             "full_rebuild": full_rebuild,
         })
+        run_cache.close()
     log.info(
         "Cache: tracks hit=%d miss=%d; pairs hit=%d miss=%d",
         cache_stats["track_hits"], cache_stats["track_misses"],
