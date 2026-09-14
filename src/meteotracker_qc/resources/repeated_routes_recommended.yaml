@@ -1,0 +1,55 @@
+name: recommended
+crs_metric_epsg: 32632
+crs_geographic_epsg: 4326
+require_qc_route_mapping: true
+exclude_missing_coordinates: true
+part_split_time_gap_s: 120.0
+part_split_max_speed_kmh: 150.0
+part_split_jump_dt_s: 5.0
+min_part_points: 2
+resampling_distance_m: 10.0
+matching_tolerance_m: 20.0
+minimum_shared_length_m: 250.0
+minimum_overlap_fraction: 0.7
+maximum_internal_gap_m: 40.0
+minimum_consecutive_matches: 15
+direction_correlation_threshold: 0.5
+reciprocal_overlap_min_fraction: 0.5
+bearing_same_direction_max_deg: 45.0
+bearing_opposite_direction_min_deg: 135.0
+candidate_buffer_m: 20.0
+consolidation_same_track_overlap_fraction: 0.7
+min_campaign_duration_minutes_excluded: 1.0
+min_campaign_valid_points_excluded: 20
+quality_valid_fraction_high: 0.9
+quality_valid_fraction_medium: 0.75
+quality_gap_ratio_high: 0.05
+quality_gap_ratio_medium: 0.2
+quality_freeze_fraction_high: 0.05
+quality_freeze_fraction_medium: 0.15
+inventory_gap_threshold_s: 5.0
+segment_quality_distance_high_m: 8.0
+segment_quality_distance_medium_m: 15.0
+time_bin_boundaries:
+  night: 0.0
+  early_morning: 5.0
+  morning: 7.5
+  midday: 10.5
+  afternoon: 13.5
+  late_afternoon: 16.5
+  evening: 19.0
+score_weights:
+  date_diversity: 0.25
+  passage_count: 0.15
+  time_bin_diversity: 0.15
+  segment_length: 0.1
+  geometric_quality: 0.15
+  qc_quality: 0.1
+  direction_diversity: 0.1
+score_norm_n_dates: 5.0
+score_norm_n_passages: 8.0
+score_norm_n_time_bins: 4.0
+score_norm_segment_length_m: 1000.0
+score_class_excellent: 75.0
+score_class_good: 50.0
+score_class_limited: 25.0

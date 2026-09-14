@@ -215,7 +215,7 @@ def run_temporal_drift(
     import sys
     import time
 
-    root = Path(root) if root else Path(__file__).resolve().parent.parent.parent
+    root = Path(root) if root else Path.cwd()
     output_root = Path(output_root) if output_root else root / "outputs" / "temporal_drift"
     output_root.mkdir(parents=True, exist_ok=True)
 

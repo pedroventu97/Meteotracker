@@ -14,7 +14,7 @@ from typing import Callable, Iterable
 
 import pandas as pd
 
-from .ingestion import PROFILE_NAMES, ValidationResult, apply_manifest_and_qc, promote, validate_file
+from .ingestion import PROFILE_NAMES, ValidationResult, apply_manifest_and_qc, manifest_row, promote, validate_file
 from .pipeline import run_qc
 
 WORKSPACE_MARKERS = ("data/raw", "data/manifests", "config", "outputs", "logs")
@@ -134,6 +134,10 @@ class ApplicationService:
                 validation["classification"] = "registered"
                 validation["canonical_source_file"] = rel
                 validation["blocking_errors"] = []
+            elif validation["classification"] == "canonical" and not validation["blocking_errors"]:
+                # Subsequent files in this deterministic batch can reference this
+                # canonical trace, even though the real manifest is read-only.
+                manifest = pd.concat([manifest, pd.DataFrame([manifest_row(ValidationResult(**validation))])], ignore_index=True)
             batch = rel.split("/", 1)[0] if inside_raw else path.parent.name
             results.append(DiscoveryResult(rel, str(path), batch, validation))
         return results
@@ -182,30 +186,35 @@ class ApplicationService:
                for item in check.get("results", [])):
             raise WorkspaceError("external CSVs require explicit copy into data/raw before apply")
         results = [ValidationResult(**item) for item in check.get("validation_results", [])
-                   if item.get("classification") == "canonical"]
-        if not results:
+                   if item.get("classification") in {"canonical", "redundant"}]
+        if not any(item.classification == "canonical" for item in results):
             raise WorkspaceError("apply requires at least one new canonical CSV")
         run_id = str(uuid.uuid4())
-        ledger = self._ledger_start(run_id, "apply", results)
+        ledger = None
         try:
             with WorkspaceLock(self.workspace, run_id):
+                ledger = self._ledger_start(run_id, "apply", results)
                 self._event(run_id, "apply", "phase_started", "Building isolated staging")
-                with tempfile.TemporaryDirectory(prefix=f"meteotracker_apply_{run_id}_") as temp:
+                with tempfile.TemporaryDirectory(prefix=f"meteotracker_apply_{run_id}_", dir=self.workspace / "logs") as temp:
                     stage = Path(temp)
                     built = apply_manifest_and_qc(self.workspace, "batch", stage, {"results": [asdict(r) for r in results]})
-                    self._run_global_analyses(stage, built["canonical_ids"])
+                    ledger["phases_completed"].extend(["point_qc", "session_qc"])
+                    analyses = self._run_global_analyses(stage, built["canonical_ids"])
+                    ledger["phases_completed"].extend(["repeated_routes", "many_to_many_consolidation", "spatial_density", "temporal_drift", "validation"])
                     report = {"run_id": run_id, "status": "staged", "campaigns": built["canonical_ids"],
-                              "global_analysis_invocations": 1, "validation": check}
+                              "global_analysis_invocations": 1, "analyses": analyses, "validation": check}
                     report_path = stage / "outputs/ingestion/batch_ingestion_report.json"
                     report_path.parent.mkdir(parents=True, exist_ok=True)
                     _atomic_json(report_path, report)
                     targets = [Path("data/manifests/campaign_manifest.csv")]
                     targets.extend(Path("outputs") / name for name in (*PROFILE_NAMES, "session_qc", "repeated_routes", "spatial_density", "temporal_drift", "ingestion"))
                     promote(stage, self.workspace, targets)
+                    ledger["phases_completed"].append("promotion")
                 self._ledger_finish(ledger, "completed", report_path=str(self.workspace / "outputs/ingestion/batch_ingestion_report.json"))
                 self._event(run_id, "apply", "run_completed", "Batch promoted", 1.0)
         except Exception as exc:
-            self._ledger_finish(ledger, "failed", error=f"{type(exc).__name__}: {exc}", rollback=True)
+            if ledger is not None:
+                self._ledger_finish(ledger, "failed", error=f"{type(exc).__name__}: {exc}", rollback=True)
             self._event(run_id, "apply", "run_failed", str(exc), level="error")
             raise
         return {"run_id": run_id, "status": "completed", "report_path": str(self.workspace / "outputs/ingestion/batch_ingestion_report.json")}
@@ -250,6 +259,7 @@ class ApplicationService:
                           manifest_path=manifest, rr_config=config, refresh_qc=False,
                           cache_dir=outputs / "repeated_routes/cache")
         write_outputs(rr, outputs / "repeated_routes")
+        self._validate_global_outputs(staging, canonical_ids, rr)
         tracks, xy, _ = run_density_analysis(raw, outputs / "recommended", manifest, config)
         grid = build_density_grid(tracks, xy, 50.0, config.crs_metric_epsg)
         grid.to_file(outputs / "spatial_density/meteotracker_coverage_50m.gpkg", layer="coverage_cells", driver="GPKG")
@@ -257,7 +267,37 @@ class ApplicationService:
         sensitivity_summary(tracks, xy, [25.0, 50.0, 100.0], config.crs_metric_epsg).to_csv(
             outputs / "spatial_density/sensitivity_cell_size_comparison.csv", index=False)
         run_temporal_drift(root=staging, output_root=outputs / "temporal_drift", campaign_ids=canonical_ids, progress=False)
-        return {"cache_stats": rr.cache_stats, "timings": rr.timings, "invocations": 1}
+        self._validate_campaign_inventory(outputs / "temporal_drift/session_temporal_diagnostics.csv", canonical_ids)
+        return {"cache_stats": rr.cache_stats, "timings": rr.timings, "invocations": 1,
+                "phases": {"session_qc": 1, "repeated_routes": 1, "many_to_many_consolidation": 1,
+                           "spatial_density": 1, "temporal_drift": 1}}
+
+    @staticmethod
+    def _validate_campaign_inventory(path: Path, canonical_ids: list[str]) -> None:
+        inventory = pd.read_csv(path)
+        ids = inventory["canonical_campaign_id"].astype(str)
+        if not ids.is_unique or set(ids) != set(canonical_ids):
+            raise WorkspaceError(f"Staged campaign inventory does not match the manifest: {path}")
+
+    def _validate_global_outputs(self, staging: Path, canonical_ids: list[str], routes: object) -> None:
+        from .repeated_routes.memberships import MEMBERSHIP_KEY, SUPPORT_COLUMNS
+        self._validate_campaign_inventory(staging / "outputs/session_qc/session_qc_inventory.csv", canonical_ids)
+        memberships = routes.point_segment_memberships
+        support = routes.point_segment_match_support
+        if memberships.duplicated(MEMBERSHIP_KEY).any() or not memberships["membership_id"].is_unique:
+            raise WorkspaceError("Staged point/segment memberships are not unique")
+        manifest = pd.read_csv(staging / "data/manifests/campaign_manifest.csv")
+        expected_sources = set(manifest.loc[manifest.canonical_campaign_id.isin(canonical_ids), "source_file"])
+        if set(routes.inventory_df.source_file) != expected_sources or not routes.inventory_df.campaign_id.is_unique:
+            raise WorkspaceError("Staged route inventory does not match canonical source files")
+        if not set(memberships["campaign_id"]) <= set(routes.inventory_df.campaign_id):
+            raise WorkspaceError("Staged memberships contain non-canonical campaigns")
+        if not set(memberships.source_file) <= expected_sources:
+            raise WorkspaceError("Staged memberships contain non-canonical source files")
+        if len(support) and not set(support["membership_id"]) <= set(memberships["membership_id"]):
+            raise WorkspaceError("Staged match support references missing memberships")
+        if support.duplicated(SUPPORT_COLUMNS).any() or not set(memberships["membership_id"]) <= set(support["membership_id"]):
+            raise WorkspaceError("Staged membership support is duplicated or incomplete")
 
     def _write_check_reports(self, run_id: str, discovered: list[DiscoveryResult], status: str,
                              qc_error: str | None, preview: dict[str, object]) -> dict[str, Path]:
@@ -280,7 +320,7 @@ class ApplicationService:
     def _ledger_start(self, run_id: str, command: str, results: list[ValidationResult]) -> dict[str, object]:
         record = {"run_id": run_id, "started_at": _now(), "finished_at": None, "workspace": str(self.workspace),
                   "command": command, "status": "running", "inputs": {r.source_file: r.file_sha256 for r in results},
-                  "campaigns": [r.proposed_campaign_id for r in results], "phases_completed": [], "rollback": False}
+                  "campaigns": [r.proposed_campaign_id for r in results if r.classification == "canonical"], "phases_completed": [], "rollback": False}
         entries = _read_json(self.workspace / "logs/run_ledger.json") or []
         entries.append(record)
         _atomic_json(self.workspace / "logs/run_ledger.json", entries)
@@ -372,6 +412,23 @@ def _is_relative_to(path: Path, root: Path) -> bool:
 def _process_alive(pid: int) -> bool:
     if pid == os.getpid():
         return True
+    if os.name == "nt":
+        # os.kill(pid, 0) is not a harmless existence probe on Windows.
+        import ctypes
+        from ctypes import wintypes
+        kernel = ctypes.WinDLL("kernel32", use_last_error=True)
+        kernel.OpenProcess.argtypes = [wintypes.DWORD, wintypes.BOOL, wintypes.DWORD]
+        kernel.OpenProcess.restype = wintypes.HANDLE
+        kernel.WaitForSingleObject.argtypes = [wintypes.HANDLE, wintypes.DWORD]
+        kernel.WaitForSingleObject.restype = wintypes.DWORD
+        kernel.CloseHandle.argtypes = [wintypes.HANDLE]
+        handle = kernel.OpenProcess(0x00100000, False, pid)  # SYNCHRONIZE
+        if not handle:
+            return ctypes.get_last_error() != 87  # only invalid PID proves absence
+        try:
+            return kernel.WaitForSingleObject(handle, 0) != 0
+        finally:
+            kernel.CloseHandle(handle)
     try:
         os.kill(pid, 0)
     except (OSError, ProcessLookupError):

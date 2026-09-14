@@ -16,8 +16,11 @@ from .derived_variables import recompute_derived_variables
 from .gps_qc import detect_gps_issues
 from .inventory import inventory_csvs
 from .meteo_qc import detect_meteo_issues
+from .policy import apply_flag_policy
+from .schema import normalize_columns
 from .stabilization import detect_sensor_stabilization
 from .time_qc import classify_timezone, detect_time_issues
+from .ventilation_qc import detect_low_speed_and_ventilation, detect_stop_events
 
 
 def _campaign_output_dir(input_csv: Path, input_root: Path, output_root: Path) -> Path:
@@ -31,6 +34,12 @@ class MeteotrackerQC:
     def __init__(self, config_path: str | Path):
         self.config_path = Path(config_path)
         self.config = yaml.safe_load(self.config_path.read_text(encoding="utf-8"))
+        self.profile_name = self.config.get("profile_name", "recommended")
+        policy_path = self.config_path.parent / "flag_policy.csv"
+        # An absent policy must not manufacture an all-kept scientific result.
+        self.flag_policy = pd.read_csv(policy_path)
+        if self.profile_name not in {"permissive", "recommended", "restrictive"}:
+            raise ValueError(f"Unknown point-QC profile: {self.profile_name}")
 
     def _write_diagnostic_artifacts(self, standardized: pd.DataFrame, output_path: Path) -> None:
         temp_series = pd.to_numeric(standardized.get("Temp[°C]", pd.Series(index=standardized.index, dtype=float)), errors="coerce")
@@ -71,38 +80,44 @@ class MeteotrackerQC:
         output_path = Path(output_dir)
         output_path.mkdir(parents=True, exist_ok=True)
 
-        raw = pd.read_csv(input_path)
+        raw = pd.read_csv(input_path, na_values=["-"])
         raw["source_file"] = input_path.name
         raw["source_row"] = np.arange(len(raw), dtype=int)
         raw["device_id"] = input_path.stem.split("_")[-2] if "_" in input_path.stem else "unknown"
         raw["campaign_id"] = input_path.stem
-        standardized = detect_time_issues(raw)
+
+        standardized, schema_report = normalize_columns(raw)
+        standardized = detect_time_issues(standardized, config=self.config)
         standardized = detect_gps_issues(standardized, config=self.config)
-        standardized = detect_meteo_issues(standardized, self.config.get("physical_limits", {}))
+        standardized = detect_low_speed_and_ventilation(standardized, config=self.config)
+        standardized = detect_stop_events(standardized, config=self.config)
+        standardized = detect_meteo_issues(standardized, self.config)
         standardized = recompute_derived_variables(standardized)
-        warm = detect_sensor_stabilization(standardized.get("Temp[°C]", pd.Series(dtype=float)), config=self.config)
+        warm = detect_sensor_stabilization(
+            standardized.get("Temp[°C]", pd.Series(dtype=float)),
+            config=self.config,
+            time_utc=standardized.get("time_utc"),
+            segment_id=standardized.get("segment_id"),
+            speed_kmh=standardized.get("speed_device_kmh"),
+        )
         standardized = standardized.join(warm)
 
-        # Simple analytical eligibility rules, reversible by flags.
+        # Simple analytical eligibility rules, reversible by flags. Includes
+        # qc_coord_missing (a row with no GPS fix is no longer silently
+        # gps_valid=True) and qc_spatial_jump (umbrella of qc_gps_jump and
+        # qc_isolated_position_outlier), closing two gaps found in the audit.
         standardized["instrument_valid"] = True
-        standardized["gps_valid"] = ~(standardized["qc_gps_freeze"] | standardized["qc_gps_jump"])
+        standardized["gps_valid"] = ~(
+            standardized["qc_gps_freeze"] | standardized["qc_spatial_jump"] | standardized["qc_coord_missing"]
+        )
         standardized["use_for_raw_timeseries"] = ~(standardized["qc_time_gap"] | standardized["qc_time_duplicate"])
         standardized["use_for_route_mapping"] = standardized["gps_valid"]
         standardized["use_for_spatial_aggregation"] = standardized["gps_valid"] & (~standardized["qc_sensor_stabilization"])
-        standardized["qc_severity"] = standardized[[
-            "qc_time_gap", "qc_gps_jump", "qc_temp_spike", "qc_sensor_stabilization"
-        ]].astype(int).sum(axis=1)
-        standardized["qc_reasons"] = standardized.apply(lambda row: ", ".join([
-            name for name in [
-                "time_gap" if row["qc_time_gap"] else None,
-                "time_duplicate" if row["qc_time_duplicate"] else None,
-                "gps_jump" if row["qc_gps_jump"] else None,
-                "gps_freeze" if row["qc_gps_freeze"] else None,
-                "temp_spike" if row["qc_temp_spike"] else None,
-                "sensor_stabilization" if row["qc_sensor_stabilization"] else None,
-            ] if name is not None
-        ]), axis=1)
-        standardized["qc_bitmask"] = standardized["qc_severity"]
+
+        policy_results = apply_flag_policy(standardized, self.flag_policy, self.profile_name)
+        for column_name, series in policy_results.items():
+            standardized[column_name] = series
+
         filtering_cfg = self.config.get("filtering", {})
         relaxed_budget = int(filtering_cfg.get("relaxed_keep_threshold", 1))
         strict_budget = int(filtering_cfg.get("strict_keep_threshold", 0))
@@ -125,25 +140,63 @@ class MeteotrackerQC:
         standardized.to_csv(output_path / f"{input_path.stem}_flagged.csv", index=False)
         standardized.loc[standardized["keep_strict"]].to_csv(output_path / f"{input_path.stem}_strict.csv", index=False)
         standardized.loc[standardized["keep_relaxed"]].to_csv(output_path / f"{input_path.stem}_relaxed.csv", index=False)
+        schema_report.to_csv(output_path / f"{input_path.stem}_schema_report.csv", index=False)
 
+        segment_summary = self._build_segment_summary(standardized)
+        segment_summary.to_csv(output_path / f"{input_path.stem}_segments.csv", index=False)
+
+        active_flag_counts = {
+            flag: int(standardized[flag].fillna(False).astype(bool).sum())
+            for flag in self.flag_policy["flag_name"]
+            if flag in standardized.columns
+        }
         with open(output_path / f"{input_path.stem}_metrics.json", "w", encoding="utf-8") as f:
             json.dump({
                 "rows": int(len(standardized)),
                 "strict_rows": int(standardized["keep_strict"].sum()),
                 "relaxed_rows": int(standardized["keep_relaxed"].sum()),
+                "profile_name": self.profile_name,
+                "n_segments": int(standardized["segment_id"].nunique()),
+                "keep_by_profile": {
+                    p: int(standardized[f"keep_{p}"].sum()) for p in ("permissive", "recommended", "restrictive")
+                },
                 "flags": standardized["qc_severity"].describe().to_dict(),
+                "active_flag_counts": active_flag_counts,
             }, f, indent=2)
 
         report_text = (
             "# QC diagnostics\n\n"
             f"- File: {input_path.name}\n"
+            f"- Profile: {self.profile_name}\n"
             f"- Rows: {len(standardized)}\n"
+            f"- Segments: {int(standardized['segment_id'].nunique())}\n"
             f"- Strict keep: {int(standardized['keep_strict'].sum())}\n"
             f"- Relaxed keep: {int(standardized['keep_relaxed'].sum())}\n"
             f"- Max severity: {int(standardized['qc_severity'].max())}\n"
         )
         (output_path / f"{input_path.stem}_report.md").write_text(report_text, encoding="utf-8")
         return standardized
+
+    @staticmethod
+    def _build_segment_summary(standardized: pd.DataFrame) -> pd.DataFrame:
+        agg_kwargs = {
+            "start_time_utc": ("time_utc", "min"),
+            "end_time_utc": ("time_utc", "max"),
+            "n_rows": ("segment_id", "size"),
+            "segment_start_reason": ("segment_start_reason", "first"),
+            "segment_end_reason": ("segment_end_reason", "first"),
+            "n_valid_gps_rows": ("gps_valid", "sum"),
+            "n_gps_freeze_rows": ("qc_gps_freeze", "sum"),
+            "n_stabilization_rows": ("qc_sensor_stabilization", "sum"),
+            "n_restart_recovery_rows": ("qc_segment_restart_recovery", "sum"),
+        }
+        if "distance_from_previous_m" in standardized.columns:
+            agg_kwargs["distance_m"] = ("distance_from_previous_m", "sum")
+        if "stop_event_id" in standardized.columns:
+            agg_kwargs["n_stop_events"] = ("stop_event_id", lambda s: int(s.dropna().nunique()))
+        summary = standardized.groupby("segment_id").agg(**agg_kwargs).reset_index()
+        summary["duration_s"] = (summary["end_time_utc"] - summary["start_time_utc"]).dt.total_seconds()
+        return summary
 
     def inventory(self, input_dir: str | Path) -> pd.DataFrame:
         return inventory_csvs(input_dir)

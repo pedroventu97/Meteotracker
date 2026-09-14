@@ -21,8 +21,6 @@ from .scoring import build_comparison_opportunities
 from .segments import consolidate_segments
 from .tracks import CampaignTracks, PartTrack, prepare_campaign_tracks
 
-REPO_ROOT = Path(__file__).resolve().parents[3]
-
 logger = logging.getLogger("meteotracker_qc.repeated_routes")
 
 

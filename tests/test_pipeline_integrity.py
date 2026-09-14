@@ -1,4 +1,5 @@
 import pandas as pd
+from meteotracker_qc.config_resources import resource
 
 from meteotracker_qc.time_qc import detect_time_issues
 from meteotracker_qc.gps_qc import detect_gps_issues
@@ -93,6 +94,7 @@ def test_campaign_output_dir_is_unique_for_same_stem_in_different_folders(tmp_pa
 
 
 def test_ambiguous_timezone_campaign_is_not_satellite_eligible(tmp_path, monkeypatch):
+    (tmp_path / "flag_policy.csv").write_bytes(resource("flag_policy.csv").read_bytes())
     config_path = tmp_path / "qc.yaml"
     config_path.write_text("filtering:\n  relaxed_keep_threshold: 1\n  strict_keep_threshold: 0\n", encoding="utf-8")
     csv_path = tmp_path / "campagna.csv"

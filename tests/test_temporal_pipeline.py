@@ -87,8 +87,9 @@ def test_observations_enriched_with_qc_context():
     assert len(obs) > 0
 
 
-def test_run_temporal_drift_on_one_real_small_campaign_writes_outputs(tmp_path):
-    campaign_id = "04-27__20260427T07_28_18_mtdicambo_AC4D162B317E_Bologna-Bologna__a768d6fc15"
+def test_run_temporal_drift_on_one_synthetic_small_campaign_writes_outputs(tmp_path, scientific_workspace):
+    ROOT = scientific_workspace
+    campaign_id = pd.read_csv(ROOT / "data/manifests/campaign_manifest.csv").query("source_file.str.endswith('short21.csv')", engine="python")["canonical_campaign_id"].iloc[0]
     result = run_temporal_drift(root=ROOT, output_root=tmp_path, campaign_ids=[campaign_id], main_n_bootstrap=50, sensitivity_n_bootstrap=20)
     assert result["campaign_ids"] == [campaign_id]
     for fname in [
@@ -100,7 +101,8 @@ def test_run_temporal_drift_on_one_real_small_campaign_writes_outputs(tmp_path):
     assert (tmp_path / "campaigns" / campaign_id / "temporal_diagnostics.json").exists()
 
 
-def test_default_campaign_discovery_is_scoped_to_session_qc_not_raw_directory_scan():
+def test_default_campaign_discovery_is_scoped_to_session_qc_not_raw_directory_scan(scientific_workspace):
+    ROOT = scientific_workspace
     # Regression test: a first attempt discovered campaign_ids by scanning
     # outputs/recommended/'s subdirectories directly. That directory can grow
     # independently (a concurrent Phase-1 ingestion run added 10 more real
@@ -123,7 +125,8 @@ def test_default_campaign_discovery_is_scoped_to_session_qc_not_raw_directory_sc
         )
 
 
-def test_manifest_session_qc_and_temporal_drift_campaign_sets_agree():
+def test_manifest_session_qc_and_temporal_drift_campaign_sets_agree(scientific_workspace):
+    ROOT = scientific_workspace
     # Fase 4B requirement: after Session QC and Temporal Drift are both
     # re-run on the 44-canonical-campaign manifest, all three "what counts as
     # a canonical campaign" sources must agree exactly -- manifest
@@ -138,13 +141,16 @@ def test_manifest_session_qc_and_temporal_drift_campaign_sets_agree():
 
     assert manifest_ids == session_qc_ids, f"manifest vs session_qc mismatch: {manifest_ids ^ session_qc_ids}"
     assert manifest_ids == temporal_drift_ids, f"manifest vs temporal_drift mismatch: {manifest_ids ^ temporal_drift_ids}"
-    assert len(manifest_ids) == 44
+    assert len(manifest_ids) == 8
 
 
 def test_repeated_routes_never_imported_by_temporal_drift_pipeline():
     import ast
-    package_dir = ROOT / "src" / "meteotracker_qc" / "temporal_drift"
-    files = list(package_dir.glob("*.py")) + [ROOT / "src" / "meteotracker_qc" / "temporal_drift_pipeline.py"]
+    import meteotracker_qc
+    package_root = Path(meteotracker_qc.__file__).resolve().parent
+    package_dir = package_root / "temporal_drift"
+    files = list(package_dir.glob("*.py")) + [package_root / "temporal_drift_pipeline.py"]
+    assert len(files) > 1
     for py_file in files:
         tree = ast.parse(py_file.read_text(encoding="utf-8"))
         imported = [alias.name for node in ast.walk(tree) if isinstance(node, ast.Import) for alias in node.names]

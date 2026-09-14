@@ -163,22 +163,18 @@ class RepeatedRoutesConfig:
         )
 
 
-_PRESET_DIR = Path(__file__).resolve().parents[3] / "config"
-
-
 def load_config(name_or_path: str) -> RepeatedRoutesConfig:
     """Resolve a repeated-routes configuration by preset name or file path.
 
     Preset names map to ``config/repeated_routes_<name>.yaml``. Anything else is
     treated as a direct path to a YAML file.
     """
-    candidate = _PRESET_DIR / f"repeated_routes_{name_or_path}.yaml"
-    if candidate.exists():
-        return RepeatedRoutesConfig.from_yaml(candidate)
     path = Path(name_or_path)
-    if path.exists():
+    if path.is_file():
         return RepeatedRoutesConfig.from_yaml(path)
+    if path.name == name_or_path and "/" not in name_or_path and "\\" not in name_or_path:
+        from ..config_resources import read_preset
+        return RepeatedRoutesConfig.from_dict(read_preset(f"repeated_routes_{name_or_path}.yaml"))
     raise FileNotFoundError(
-        f"No repeated-routes config preset or file found for '{name_or_path}' "
-        f"(looked for {candidate} and as a direct path)"
+        f"No repeated-routes configuration file found: {name_or_path}"
     )

@@ -36,6 +36,10 @@ def refresh_qc_outputs(raw_dir: Path, qc_output_dir: Path, qc_config_path: Path,
 def list_canonical_campaigns(raw_dir: Path, qc_output_dir: Path, manifest_path: Path) -> list[CampaignSource]:
     manifest = pd.read_csv(manifest_path)
     canonical = manifest.loc[~manifest["exclude_from_analysis"].astype(bool)]
+    if not canonical["source_file"].is_unique:
+        raise ValueError("Canonical source_file entries must be unique")
+    stems = canonical["source_file"].map(lambda name: Path(name).stem)
+    duplicate_stems = set(stems[stems.duplicated(keep=False)])
     sources = []
     for _, row in canonical.iterrows():
         rel_path = Path(row["source_file"])
@@ -43,7 +47,10 @@ def list_canonical_campaigns(raw_dir: Path, qc_output_dir: Path, manifest_path: 
         out_dir = _campaign_output_dir(raw_csv, raw_dir, qc_output_dir)
         standardized = out_dir / f"{raw_csv.stem}_standardized.parquet"
         sources.append(CampaignSource(
-            campaign_id=raw_csv.stem,
+            # Preserve historical route IDs for unique stems. Nested batches
+            # with equal filenames need the collision-free QC directory ID;
+            # otherwise dicts in route/density loading silently lose a campaign.
+            campaign_id=out_dir.name if raw_csv.stem in duplicate_stems else raw_csv.stem,
             source_file=rel_path.as_posix(),
             output_dir=out_dir,
             standardized_path=standardized,
