@@ -8,6 +8,7 @@ import tempfile
 from dataclasses import asdict, dataclass
 from datetime import datetime, timezone
 from pathlib import Path
+from typing import Callable
 
 import pandas as pd
 
@@ -215,7 +216,8 @@ def apply_manifest_and_qc(root: Path, campaign: str, staging_root: Path, check: 
             "canonical_ids": sorted(manifest.loc[~_bool_series(manifest["exclude_from_analysis"]), "canonical_campaign_id"].astype(str))}
 
 
-def promote(staging_root: Path, root: Path, relative_targets: list[Path]) -> None:
+def promote(staging_root: Path, root: Path, relative_targets: list[Path], *,
+            after_promotion: Callable[[], None] | None = None) -> None:
     """Promote staged paths with rollback. Existing paths are restored on failure."""
     backup_root = staging_root / "_rollback"
     moved: list[tuple[Path, Path]] = []
@@ -232,6 +234,10 @@ def promote(staging_root: Path, root: Path, relative_targets: list[Path]) -> Non
                 moved.append((backup, destination))
             source.replace(destination)
             installed.append(destination)
+        # The complete promotion is indivisible with respect to cancellation.
+        # A cancellation here uses the same rollback as any promotion failure.
+        if after_promotion is not None:
+            after_promotion()
     except Exception:
         for destination in reversed(installed):
             if destination.is_dir():

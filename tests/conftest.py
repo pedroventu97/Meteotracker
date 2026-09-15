@@ -2,8 +2,22 @@
 from collections import Counter
 from functools import wraps
 import hashlib
+from pathlib import Path
 
 import pytest
+
+
+@pytest.fixture(scope="session", autouse=True)
+def forbid_official_apply():
+    """Every test session must reject writes to the real project workspace."""
+    from meteotracker_qc.application import ApplicationService
+    original = ApplicationService.apply
+    def guarded(service, *args, **kwargs):
+        assert service.workspace.resolve() != Path("D:/projects/Meteotracker").resolve(), "OFFICIAL APPLY FORBIDDEN"
+        return original(service, *args, **kwargs)
+    with pytest.MonkeyPatch.context() as patch:
+        patch.setattr(ApplicationService, "apply", guarded)
+        yield
 
 REAL_DATA_MODULES = {
     "test_regression_real_data.py", "test_session_regression_real_data.py", "test_temporal_real_data.py",
