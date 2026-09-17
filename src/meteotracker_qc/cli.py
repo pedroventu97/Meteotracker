@@ -34,6 +34,25 @@ def build_parser() -> argparse.ArgumentParser:
         command.add_argument("--path", action="append", default=[])
         command.add_argument("--yes", action="store_true", help="Skip confirmation for run")
     commands.choices["history"].add_argument("--run-id")
+    sessions = commands.add_parser("sessions", help="Analisi read-only delle campagne registrate")
+    session_commands = sessions.add_subparsers(dest="session_command", required=True)
+    for name in ("list", "inspect", "qc", "compare"):
+        command = session_commands.add_parser(name)
+        command.add_argument("--workspace", default=argparse.SUPPRESS)
+        command.add_argument("--json", action="store_true", default=argparse.SUPPRESS)
+        if name == "list":
+            command.add_argument("--search", default="")
+            command.add_argument("--batch")
+            command.add_argument("--status")
+            command.add_argument("--date-from")
+            command.add_argument("--date-to")
+        else:
+            command.add_argument("campaign_ids", nargs="+" if name != "inspect" else 1)
+        if name in {"qc", "compare"}:
+            command.add_argument("--profile", choices=("recommended", "permissive", "restrictive"), default="recommended")
+            command.add_argument("--preset", help="Preset JSON compatibile")
+            command.add_argument("--disable", action="append", default=[], help="ID di controllo da disattivare")
+            command.add_argument("--export", action="store_true", help="Salva solo in outputs/custom_analyses")
     return parser
 
 
@@ -41,7 +60,27 @@ def main(argv: list[str] | None = None) -> int:
     args = build_parser().parse_args(argv)
     service = ApplicationService(args.workspace)
     try:
-        if args.command == "doctor":
+        if args.command == "sessions":
+            if args.session_command == "list":
+                payload = service.list_sessions(search=args.search, batch=args.batch, status=args.status,
+                                                date_from=args.date_from, date_to=args.date_to)
+            elif args.session_command == "inspect":
+                payload = service.inspect_session(args.campaign_ids[0])
+            else:
+                from .analysis_settings import DEFAULT_ACTIVE
+                options = {"profile": args.profile, "active_controls": [g for g in DEFAULT_ACTIVE if g not in args.disable]}
+                if args.preset:
+                    preset = service.load_analysis_preset(args.preset)
+                    options = {"profile": preset["origin_profile"], "active_controls": preset["active_controls"], "overrides": preset["overrides"]}
+                if set(args.disable) - set(DEFAULT_ACTIVE):
+                    raise ValueError("Controllo --disable sconosciuto")
+                with service.preview_qc(args.campaign_ids, **options) as analysis:
+                    payload = dict(analysis.report)
+                    payload["comparison"] = service.compare_sessions(analysis=analysis)
+                    payload["preview_directory"] = None  # context manager removes disposable data
+                    if args.export:
+                        payload["export_directory"] = service.export_custom_analysis(analysis)
+        elif args.command == "doctor":
             payload = service.doctor()
         elif args.command == "status":
             payload = service.status()
@@ -72,7 +111,13 @@ def main(argv: list[str] | None = None) -> int:
 
 
 def _print_human(command: str, payload: object) -> None:
-    if command == "doctor" and isinstance(payload, dict):
+    if command == "sessions":
+        if isinstance(payload, list):
+            for row in payload:
+                print(f"{row['campaign_id']} | {row['date']} | {row['batch']} | {row['rows']} righe | {row['session_qc_status']}")
+        else:
+            print(json.dumps(payload, ensure_ascii=False, indent=2, default=str))
+    elif command == "doctor" and isinstance(payload, dict):
         print(f"Workspace: {payload['workspace']} ({'valid' if payload['valid'] else 'invalid'})")
     elif command == "status" and isinstance(payload, dict):
         print(f"Workspace: {payload['workspace']}")

@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import numpy as np
 import pandas as pd
+from .analysis_settings import enabled
 
 
 def _parse_timestamp_series(series: pd.Series, *, utc: bool) -> pd.Series:
@@ -70,7 +71,7 @@ def detect_time_issues(df: pd.DataFrame, config: dict | None = None) -> pd.DataF
     out["time_utc"] = parsed_all
     out["time_local"] = out["time_utc"].dt.tz_convert("Europe/Rome")
 
-    out["qc_time_parse"] = out["time_utc"].isna()
+    out["qc_time_parse"] = out["time_utc"].isna() if enabled(config, "timestamp") else False
     out["elapsed_s"] = pd.Series(np.nan, index=out.index, dtype=float)
     out["dt_s"] = pd.Series(np.nan, index=out.index, dtype=float)
 
@@ -81,8 +82,8 @@ def detect_time_issues(df: pd.DataFrame, config: dict | None = None) -> pd.DataF
         dt_raw = out.loc[valid, "time_utc"].diff().dt.total_seconds()
         out.loc[valid, "dt_s"] = dt_raw
 
-    out["qc_time_order"] = out["time_utc"].diff().lt(pd.Timedelta(0))
-    out["qc_time_duplicate"] = out["time_utc"].duplicated(keep=False)
+    out["qc_time_order"] = out["time_utc"].diff().lt(pd.Timedelta(0)) if enabled(config, "monotonicity") else False
+    out["qc_time_duplicate"] = out["time_utc"].duplicated(keep=False) if enabled(config, "duplicates") else False
     out["qc_time_nonpositive_dt"] = out["dt_s"] <= 0
 
     time_cfg = (config or {}).get("time", {})
@@ -130,5 +131,9 @@ def detect_time_issues(df: pd.DataFrame, config: dict | None = None) -> pd.DataF
     if len(end_reason_per_segment) > 0:
         end_reason_per_segment.iloc[-1] = "campaign_end"
     out["segment_end_reason"] = out["segment_id"].map(end_reason_per_segment)
+
+    # Segmentation is a structural prerequisite even when gap reporting is off.
+    if not enabled(config, "gaps"):
+        out[["qc_sampling_gap_short", "qc_sampling_gap_long", "qc_time_gap"]] = False
 
     return out

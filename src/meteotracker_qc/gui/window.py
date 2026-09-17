@@ -18,6 +18,7 @@ from PySide6.QtWidgets import (
 from ..application import ApplicationService
 from .models import CsvModel
 from .worker import ServiceWorker
+from .log_panel import LogPanel
 
 PHASES = {"session_qc": "Session QC", "repeated_routes": "Repeated routes",
           "many_to_many_consolidation": "Consolidamento many-to-many",
@@ -35,6 +36,7 @@ class MainWindow(QMainWindow):
         self.read_only = read_only
         self.service = None
         self.worker = None
+        self.analysis_window = None
         self.check_payload = None
         self.check_selection = ()
         self._rendering = False
@@ -69,6 +71,10 @@ class MainWindow(QMainWindow):
         self.choose_button = QPushButton("Scegli workspace")
         self.choose_button.clicked.connect(self.choose_workspace)
         bar.addWidget(self.workspace_label, 1)
+        self.analysis_button = QPushButton("Analizza sessioni")
+        self.analysis_button.setStyleSheet("QPushButton { padding: 7px 16px; font-weight: bold; }")
+        self.analysis_button.clicked.connect(self.open_analysis)
+        bar.addWidget(self.analysis_button)
         bar.addWidget(self.choose_button)
         layout.addLayout(bar)
         if self.read_only:
@@ -159,10 +165,9 @@ class MainWindow(QMainWindow):
         hl.addWidget(self.history_table)
         hl.addWidget(QLabel("Doppio clic su un run per aprire il rapporto, se disponibile."))
         self.tabs.addTab(history_page, "Cronologia")
-        self.log = QPlainTextEdit()
-        self.log.setReadOnly(True)
-        self.log.setMaximumBlockCount(5000)
-        self.tabs.addTab(self.log, "Log")
+        self.log_panel = LogPanel()
+        self.log = self.log_panel.technical  # compatibility: complete structured JSON remains available
+        self.tabs.addTab(self.log_panel, "Log")
 
         bottom = QHBoxLayout()
         self.status_label = QLabel("Pronto")
@@ -201,11 +206,15 @@ class MainWindow(QMainWindow):
     def set_workspace(self, path):
         if self.worker:
             return False
+        if self.analysis_window and self.analysis_window.isVisible():
+            if not self.analysis_window.close():
+                return False
         candidate = ApplicationService(path, read_only=self.read_only)
         if not candidate.doctor()["valid"]:
             self.status_label.setText("Workspace non valida: " + str(candidate.workspace_error))
             return False
         self.service = candidate
+        self.analysis_window = None
         self.workspace_label.setText(f"Workspace: {candidate.workspace}")
         if self.persist:
             self.settings.setValue("last_workspace", str(candidate.workspace))
@@ -343,7 +352,7 @@ class MainWindow(QMainWindow):
     @Slot(object)
     def _receive_event(self, event):
         self.events.append(asdict(event))
-        self.log.appendPlainText(json.dumps(asdict(event), ensure_ascii=False))
+        self.log_panel.append_event(event)
         if event.event == "critical_started":
             self._critical = True
         elif event.event in {"critical_completed", "run_cancelled", "run_failed"}:
@@ -367,7 +376,7 @@ class MainWindow(QMainWindow):
         if self._error:
             self.invalidate_check()
             self.status_label.setText("Errore: " + self._error)
-            self.log.appendPlainText("Errore: " + self._error)
+            self.log_panel.message(self._error)
         elif value.get("status") == "cancelled":
             self.invalidate_check()
             self.status_label.setText("Operazione annullata; pulizia completata")
@@ -456,9 +465,11 @@ class MainWindow(QMainWindow):
     @Slot()
     def update_controls(self):
         ready = self.service is not None and self.worker is None and not self._closing
+        analysis_busy = bool(self.analysis_window and self.analysis_window.busy)
+        self.analysis_button.setEnabled(self.service is not None and not self._closing)
         for widget in (self.scan_button, self.add_button, self.refresh_button, self.batch_list, self.table):
             widget.setEnabled(ready)
-        self.choose_button.setEnabled(self.worker is None and not self._closing)
+        self.choose_button.setEnabled(self.worker is None and not self._closing and not analysis_busy)
         self.check_button.setEnabled(ready and bool(self.selected_paths()))
         self.cancel_button.setEnabled(self.worker is not None and not self.worker.token.requested)
         check = self.check_payload or {}
@@ -466,7 +477,7 @@ class MainWindow(QMainWindow):
             locked = bool(self.service and self.service.lock_status())
         except (OSError, ValueError):
             locked = True
-        allowed = (ready and not self.read_only and not locked and check.get("status") in {"pass", "warning"}
+        allowed = (ready and not analysis_busy and not self.read_only and not locked and check.get("status") in {"pass", "warning"}
                    and self.selected_paths() == self.check_selection and check.get("plan", {}).get("campaigns")
                    and not check.get("plan", {}).get("external")
                    and not any(i.get("blocking_errors") or i.get("classification") in {"invalid", "ambiguous"}
@@ -508,6 +519,10 @@ class MainWindow(QMainWindow):
             return False
 
     def closeEvent(self, event):
+        if self.analysis_window and (self.analysis_window.isVisible() or self.analysis_window.busy):
+            if not self.analysis_window.close():
+                event.ignore()
+                return
         if self.worker:
             self._closing = True
             self.cancel_operation()
@@ -519,3 +534,14 @@ class MainWindow(QMainWindow):
             self.settings.setValue("filter", self.filter_edit.text())
             self.settings.sync()
         event.accept()
+
+    def open_analysis(self):
+        if not self.service:
+            return
+        if self.analysis_window is None:
+            from .session_analysis import SessionAnalysisWindow
+            self.analysis_window = SessionAnalysisWindow(self.service, settings=self.settings, persist=self.persist, parent=self)
+            self.analysis_window.busy_changed.connect(self.update_controls)
+        self.analysis_window.show()
+        self.analysis_window.raise_()
+        self.analysis_window.activateWindow()

@@ -21,6 +21,7 @@ from .schema import normalize_columns
 from .stabilization import detect_sensor_stabilization
 from .time_qc import classify_timezone, detect_time_issues
 from .ventilation_qc import detect_low_speed_and_ventilation, detect_stop_events
+from .analysis_settings import enabled
 
 
 def _campaign_output_dir(input_csv: Path, input_root: Path, output_root: Path) -> Path:
@@ -75,7 +76,12 @@ class MeteotrackerQC:
         fig.savefig(output_path / "route_map.png", dpi=150)
         plt.close(fig)
 
-    def process_file(self, input_csv: str | Path, output_dir: str | Path) -> pd.DataFrame:
+    def process_file(self, input_csv: str | Path, output_dir: str | Path, *, cancellation=None, diagnostics=True) -> pd.DataFrame:
+        def checkpoint():
+            if cancellation is not None:
+                cancellation.checkpoint()
+
+        checkpoint()
         input_path = Path(input_csv)
         output_path = Path(output_dir)
         output_path.mkdir(parents=True, exist_ok=True)
@@ -89,10 +95,13 @@ class MeteotrackerQC:
         standardized, schema_report = normalize_columns(raw)
         standardized = detect_time_issues(standardized, config=self.config)
         standardized = detect_gps_issues(standardized, config=self.config)
+        checkpoint()
         standardized = detect_low_speed_and_ventilation(standardized, config=self.config)
         standardized = detect_stop_events(standardized, config=self.config)
         standardized = detect_meteo_issues(standardized, self.config)
-        standardized = recompute_derived_variables(standardized)
+        if enabled(self.config, "derived"):
+            standardized = recompute_derived_variables(standardized)
+        checkpoint()
         warm = detect_sensor_stabilization(
             standardized.get("Temp[°C]", pd.Series(dtype=float)),
             config=self.config,
@@ -134,7 +143,9 @@ class MeteotrackerQC:
 
         config_snapshot = yaml.safe_dump(self.config, sort_keys=False, allow_unicode=True)
         (output_path / "config_used.yaml").write_text(config_snapshot, encoding="utf-8")
-        self._write_diagnostic_artifacts(standardized, output_path)
+        checkpoint()
+        if diagnostics:
+            self._write_diagnostic_artifacts(standardized, output_path)
 
         standardized.to_parquet(output_path / f"{input_path.stem}_standardized.parquet", index=False)
         standardized.to_csv(output_path / f"{input_path.stem}_flagged.csv", index=False)
@@ -175,6 +186,7 @@ class MeteotrackerQC:
             f"- Max severity: {int(standardized['qc_severity'].max())}\n"
         )
         (output_path / f"{input_path.stem}_report.md").write_text(report_text, encoding="utf-8")
+        checkpoint()
         return standardized
 
     @staticmethod

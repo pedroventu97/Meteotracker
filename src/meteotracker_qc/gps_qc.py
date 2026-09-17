@@ -5,6 +5,7 @@ import pandas as pd
 from pyproj import Geod
 
 from .time_qc import estimate_expected_sampling_interval_s
+from .analysis_settings import enabled
 
 GEOD = Geod(ellps="WGS84")
 
@@ -82,7 +83,7 @@ def detect_gps_issues(df: pd.DataFrame, config: dict | None = None) -> pd.DataFr
     temp_c = pd.to_numeric(out.get("Temp[°C]", pd.Series(index=out.index, dtype=float)), errors="coerce")
 
     n = len(out)
-    out["qc_coord_missing"] = lat.isna() | lon.isna()
+    out["qc_coord_missing"] = (lat.isna() | lon.isna()) if enabled(config, "coordinates") else False
     out["qc_coord_outside_aoi"] = pd.Series(pd.NA, index=out.index, dtype="boolean")
     out["qc_off_network_possible"] = detect_off_network_possible(out)
     out["speed_device_kmh"] = speed_device_kmh
@@ -158,7 +159,7 @@ def detect_gps_issues(df: pd.DataFrame, config: dict | None = None) -> pd.DataFr
         "NOT_EVALUABLE_AFTER_GAP",
     ]
     out["speed_evidence_class"] = np.select(conditions, choices, default="NEITHER_AVAILABLE")
-    out["qc_speed_disagreement"] = out["speed_evidence_class"] == "BOTH_AVAILABLE_DISAGREE"
+    out["qc_speed_disagreement"] = (out["speed_evidence_class"] == "BOTH_AVAILABLE_DISAGREE") if enabled(config, "speed") else False
 
     # Coordinate repetition: geodesic tolerance instead of bit-exact float
     # equality, and evaluated independently of segment continuity (a device
@@ -176,7 +177,7 @@ def detect_gps_issues(df: pd.DataFrame, config: dict | None = None) -> pd.DataFr
         )
         distance_for_repeat_m.loc[idx2] = dist2
     out["distance_from_previous_repeat_check_m"] = distance_for_repeat_m
-    qc_coord_repeated = (distance_for_repeat_m <= coord_repeated_tolerance_m).fillna(False)
+    qc_coord_repeated = (distance_for_repeat_m <= coord_repeated_tolerance_m).fillna(False) & enabled(config, "gps_freeze")
     out["qc_coord_repeated"] = qc_coord_repeated
 
     repeated_block = qc_coord_repeated & (
@@ -229,14 +230,14 @@ def detect_gps_issues(df: pd.DataFrame, config: dict | None = None) -> pd.DataFr
 
     excess_m = out["distance_from_previous_m"] + dist_to_next - dist_direct
     out["position_outlier_excess_m"] = excess_m
-    out["qc_isolated_position_outlier"] = (excess_m > isolated_outlier_excess_m).fillna(False)
+    out["qc_isolated_position_outlier"] = (excess_m > isolated_outlier_excess_m).fillna(False) if enabled(config, "gps_jumps") else False
 
-    out["qc_gps_jump"] = (out["distance_from_previous_m"] > jump_distance_m) & (dt_s <= jump_dt_s)
+    out["qc_gps_jump"] = ((out["distance_from_previous_m"] > jump_distance_m) & (dt_s <= jump_dt_s)) if enabled(config, "gps_jumps") else False
     out["qc_gps_jump"] = out["qc_gps_jump"].fillna(False)
     out["qc_spatial_jump"] = out["qc_gps_jump"] | out["qc_isolated_position_outlier"]
 
-    out["qc_unrealistic_speed"] = (out["speed_gps_kmh"] > max_speed_kmh_absolute).fillna(False)
-    out["qc_unrealistic_acceleration"] = (out["acceleration_gps_mps2"].abs() > acceleration_abs).fillna(False)
+    out["qc_unrealistic_speed"] = (out["speed_gps_kmh"] > max_speed_kmh_absolute).fillna(False) if enabled(config, "speed") else False
+    out["qc_unrealistic_acceleration"] = (out["acceleration_gps_mps2"].abs() > acceleration_abs).fillna(False) if enabled(config, "acceleration") else False
     # Deprecated legacy-compatibility aliases (formulas unchanged in meaning,
     # renamed for clarity): kept because referenced by name in existing tests.
     out["qc_impossible_acceleration"] = out["qc_unrealistic_acceleration"]

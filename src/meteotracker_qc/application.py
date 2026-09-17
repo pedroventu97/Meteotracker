@@ -17,6 +17,7 @@ import pandas as pd
 from .ingestion import PROFILE_NAMES, ValidationResult, apply_manifest_and_qc, manifest_row, promote, validate_file, sha256_file
 from .operation import CancellationToken, OperationCancelled, safe_result_path
 from .pipeline import run_qc
+from .session_analysis import SessionAnalysisService
 
 WORKSPACE_MARKERS = ("data/raw", "data/manifests", "config", "outputs", "logs")
 
@@ -90,7 +91,7 @@ class WorkspaceLock:
         self.release()
 
 
-class ApplicationService:
+class ApplicationService(SessionAnalysisService):
     def __init__(self, workspace: str | Path | None = None, emit: Callable[[AppEvent], None] | None = None,
                  *, cancellation: CancellationToken | None = None, read_only: bool = False):
         self.workspace = resolve_workspace(workspace)

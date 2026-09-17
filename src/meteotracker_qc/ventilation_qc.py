@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import numpy as np
 import pandas as pd
+from .analysis_settings import enabled
 
 
 def detect_low_speed_and_ventilation(df: pd.DataFrame, config: dict | None = None) -> pd.DataFrame:
@@ -19,6 +20,11 @@ def detect_low_speed_and_ventilation(df: pd.DataFrame, config: dict | None = Non
     day_end_hour = float(vent_cfg.get("day_end_local_hour", 20.0))
 
     out = df.copy()
+    if not enabled(config, "ventilation"):
+        out[["qc_low_speed_device", "qc_low_speed_gps", "qc_low_ventilation_possible"]] = False
+        out[["low_speed_device_duration_s", "low_speed_gps_duration_s"]] = np.nan
+        out["ventilation_evidence_class"] = "DISABLED"
+        return out
     speed_device = pd.to_numeric(out.get("speed_device_kmh", pd.Series(index=out.index, dtype=float)), errors="coerce")
     speed_gps = pd.to_numeric(out.get("speed_gps_kmh", pd.Series(index=out.index, dtype=float)), errors="coerce")
     dt_s = pd.to_numeric(out.get("dt_s", pd.Series(index=out.index, dtype=float)), errors="coerce")
@@ -112,6 +118,11 @@ def detect_stop_events(df: pd.DataFrame, config: dict | None = None) -> pd.DataF
     low_speed_threshold_kmh = float(vent_cfg.get("low_speed_threshold_kmh", 7.0))
 
     out = df.copy()
+    if not enabled(config, "ventilation"):
+        out[["qc_stop_event", "qc_post_stop_recovery"]] = False
+        out[["stop_duration_s", "recovery_seconds_elapsed"]] = np.nan
+        out["stop_event_id"] = pd.Series(pd.NA, index=out.index, dtype="Int64")
+        return out
     n = len(out)
     stationary = out.get("qc_stationary", pd.Series(False, index=out.index)).fillna(False)
     dt_s = pd.to_numeric(out.get("dt_s", pd.Series(index=out.index, dtype=float)), errors="coerce")

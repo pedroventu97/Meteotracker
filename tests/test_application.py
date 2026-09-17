@@ -33,7 +33,7 @@ def test_workspace_resolution_environment_and_external_cwd(tmp_path, monkeypatch
 def test_cli_public_commands_are_explicit():
     parser = build_parser()
     assert set(parser._subparsers._group_actions[0].choices) == {
-        "doctor", "status", "discover", "check", "apply", "run", "history",
+        "doctor", "status", "discover", "check", "apply", "run", "history", "sessions",
     }
 
 

@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import numpy as np
 import pandas as pd
+from .analysis_settings import enabled
 
 
 def _analyze_segment(
@@ -142,6 +143,12 @@ def detect_sensor_stabilization(
     n = len(s)
 
     out = pd.DataFrame(index=idx)
+    if not enabled(config, "warmup"):
+        out["qc_sensor_stabilization"] = False
+        out["qc_segment_restart_recovery"] = False
+        out["stabilization_window_end_reason"] = "DISABLED"
+        out["stabilization_seconds_from_segment_start"] = np.nan
+        return out
     if n == 0:
         out["qc_sensor_stabilization"] = pd.Series(dtype=bool)
         out["qc_segment_restart_recovery"] = pd.Series(dtype=bool)

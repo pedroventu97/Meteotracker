@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import numpy as np
 import pandas as pd
+from .analysis_settings import enabled
 
 
 def _coerce_numeric(series: pd.Series) -> pd.Series:
@@ -30,9 +31,9 @@ def detect_meteo_issues(df: pd.DataFrame, config: dict | None = None) -> pd.Data
     pressure_low = float(physical_cfg.get("pressure_min_mbar", 850))
     pressure_high = float(physical_cfg.get("pressure_max_mbar", 1100))
 
-    out["qc_temp_impossible"] = (temp < temp_low) | (temp > temp_high)
-    out["qc_humidity_impossible"] = (humidity < humidity_low) | (humidity > humidity_high)
-    out["qc_pressure_impossible"] = (pressure < pressure_low) | (pressure > pressure_high)
+    out["qc_temp_impossible"] = ((temp < temp_low) | (temp > temp_high)) if enabled(config, "temperature") else False
+    out["qc_humidity_impossible"] = ((humidity < humidity_low) | (humidity > humidity_high)) if enabled(config, "humidity") else False
+    out["qc_pressure_impossible"] = ((pressure < pressure_low) | (pressure > pressure_high)) if enabled(config, "pressure") else False
     # Documented, unimplemented placeholders (a softer "contextually
     # implausible but not physically impossible" band). Never fabricated as
     # False -- left as nullable/NA so a reader cannot mistake "not computed"
@@ -41,6 +42,12 @@ def detect_meteo_issues(df: pd.DataFrame, config: dict | None = None) -> pd.Data
     out["qc_temp_suspect"] = pd.Series(pd.NA, index=out.index, dtype="boolean")
     out["qc_humidity_suspect"] = pd.Series(pd.NA, index=out.index, dtype="boolean")
     out["qc_pressure_suspect"] = pd.Series(pd.NA, index=out.index, dtype="boolean")
+
+    if not enabled(config, "temperature"):
+        for flag in ("qc_temp_isolated_spike", "qc_temp_spike", "qc_temp_rate_anomaly", "qc_sensor_plateau_possible"):
+            out[flag] = False
+        out["temp_rate_c_per_s"] = np.nan
+        return out
 
     dt_s = _coerce_numeric(out.get("dt_s", pd.Series(index=out.index, dtype=float)))
     segment_id = out.get("segment_id", pd.Series(0, index=out.index))
