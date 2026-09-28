@@ -88,6 +88,7 @@ def write_campaign_json(
     payload = {
         "canonical_campaign_id": campaign_id,
         "config_version": config_version,
+        "qc_config_fingerprint": session_dict.get("qc_config_fingerprint"),
         "session": session_dict,
         "segments": segments_list,
         "suitability": suitability_dict,

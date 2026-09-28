@@ -9,3 +9,4 @@ geopandas>=1.1
 shapely>=2.1
 pyogrio>=0.13
 pyarrow
+PySide6>=6.7

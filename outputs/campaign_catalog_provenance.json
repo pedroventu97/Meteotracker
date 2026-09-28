@@ -1,0 +1,103 @@
+{
+  "product_status": "OFFICIAL",
+  "canonical_definition": "A campaign is canonical iff it is listed in data/manifests/campaign_manifest.csv with exclude_from_analysis=false and a unique non-empty canonical_campaign_id. The catalog is a view of that identity plus existing QC/session-QC/recommended products.",
+  "generated_at_utc": "2026-09-16T20:55:32.299967+00:00",
+  "source_git_commit": "f404ae3587033835285be87b5a633dd821938e47",
+  "qc_version": "session_qc_v1",
+  "qc_config_fingerprint": "0e06b2ee5397030ba4592eeaa1e86857cc5a32cfe127821946be60875641ebc4",
+  "matching_algorithm_version": "repeated_routes_schema_version_3",
+  "matching_config_fingerprint": "a757e66cd0b075e9074ff0492d9ab10eb941d3f0659a9ec60dd99189e1117c51",
+  "n_canonical_campaigns": 44,
+  "n_pending_raw_files": 6,
+  "pending_raw_files": [
+    {
+      "source_file": "8-1/20260801T08_39_06_mtdicambo_AC4D162B317E_Anzola dell'Emilia-Bologna.csv",
+      "file_sha256": "7ca5e723ac33645e1669458083c581ae9a952d413c6601faf4aea02cf7eda22d",
+      "classification": "canonical",
+      "proposed_campaign_id": "8-1__20260801T08_39_06_mtdicambo_AC4D162B317E_Anzola_dell'Emilia-Bologna__df90cb6e78",
+      "ok": true,
+      "blocking_errors": "",
+      "warnings": "3 duplicate timestamps (handled by QC flags)",
+      "time_start_utc": "2026-08-01 08:39:06+00:00",
+      "time_end_utc": "2026-08-01 09:09:58+00:00",
+      "rows": 1123,
+      "promotion_status": "PENDING_RAW_NOT_IN_MANIFEST"
+    },
+    {
+      "source_file": "9-8/20260908T06_26_24_mtdicambo_AC4D162B317E_Bologna-Bologna.csv",
+      "file_sha256": "5756be6f0f4239cdd487626a2e75216882e35a78a9db9eb981500fcaa4cd9353",
+      "classification": "canonical",
+      "proposed_campaign_id": "9-8__20260908T06_26_24_mtdicambo_AC4D162B317E_Bologna-Bologna__06d72adbac",
+      "ok": true,
+      "blocking_errors": "",
+      "warnings": "2 duplicate timestamps (handled by QC flags)",
+      "time_start_utc": "2026-09-08 06:26:24+00:00",
+      "time_end_utc": "2026-09-08 07:41:05+00:00",
+      "rows": 1674,
+      "promotion_status": "PENDING_RAW_NOT_IN_MANIFEST"
+    },
+    {
+      "source_file": "9-8/20260908T09_13_52_mtdicambo_AC4D162B317E_Bologna-Bologna.csv",
+      "file_sha256": "ce3490cfa1dd36ebf464bb2c8722282b6bf057307937943d4a6764c17dbe2999",
+      "classification": "canonical",
+      "proposed_campaign_id": "9-8__20260908T09_13_52_mtdicambo_AC4D162B317E_Bologna-Bologna__e0ca8e1c98",
+      "ok": true,
+      "blocking_errors": "",
+      "warnings": "",
+      "time_start_utc": "2026-09-08 09:13:52+00:00",
+      "time_end_utc": "2026-09-08 09:33:00+00:00",
+      "rows": 684,
+      "promotion_status": "PENDING_RAW_NOT_IN_MANIFEST"
+    },
+    {
+      "source_file": "9-8/20260908T12_24_03_mtdicambo_AC4D162B317E_Bologna-Bologna.csv",
+      "file_sha256": "63d537ea56301b709be396b1575d26c9e96500bb4bf54af88842a9b832a0f117",
+      "classification": "canonical",
+      "proposed_campaign_id": "9-8__20260908T12_24_03_mtdicambo_AC4D162B317E_Bologna-Bologna__bdf0afa716",
+      "ok": true,
+      "blocking_errors": "",
+      "warnings": "3 duplicate timestamps (handled by QC flags)",
+      "time_start_utc": "2026-09-08 12:24:03+00:00",
+      "time_end_utc": "2026-09-08 12:46:49+00:00",
+      "rows": 743,
+      "promotion_status": "PENDING_RAW_NOT_IN_MANIFEST"
+    },
+    {
+      "source_file": "9-8/20260908T15_31_21_mtdicambo_AC4D162B317E_Bologna-Bologna.csv",
+      "file_sha256": "c8fec1ae4544fd9611f869eaf69129a59283995d49d2c8e3def27d6ce1823b75",
+      "classification": "canonical",
+      "proposed_campaign_id": "9-8__20260908T15_31_21_mtdicambo_AC4D162B317E_Bologna-Bologna__c3cc0cc5fb",
+      "ok": true,
+      "blocking_errors": "",
+      "warnings": "",
+      "time_start_utc": "2026-09-08 15:31:21+00:00",
+      "time_end_utc": "2026-09-08 15:53:23+00:00",
+      "rows": 401,
+      "promotion_status": "PENDING_RAW_NOT_IN_MANIFEST"
+    },
+    {
+      "source_file": "9-8/20260908T18_50_44_mtdicambo_AC4D162B317E_Bologna-Bologna.csv",
+      "file_sha256": "138274d6df9c7266a59230beae0ee9dba6bcc378ba3e08e2a0b4307877072939",
+      "classification": "canonical",
+      "proposed_campaign_id": "9-8__20260908T18_50_44_mtdicambo_AC4D162B317E_Bologna-Bologna__361c534618",
+      "ok": true,
+      "blocking_errors": "",
+      "warnings": "2 duplicate timestamps (handled by QC flags)",
+      "time_start_utc": "2026-09-08 18:50:44+00:00",
+      "time_end_utc": "2026-09-08 19:11:25+00:00",
+      "rows": 190,
+      "promotion_status": "PENDING_RAW_NOT_IN_MANIFEST"
+    }
+  ],
+  "official_paths": {
+    "campaign_catalog": "outputs/campaign_catalog.csv",
+    "recommended": "outputs/recommended",
+    "session_qc": "outputs/session_qc",
+    "repeated_routes": "outputs/repeated_routes",
+    "memberships": "outputs/repeated_routes/point_segment_memberships.csv"
+  },
+  "audit_root": "outputs/audit",
+  "audit_not_used": true,
+  "unavailable_policy": "NOT_AVAILABLE means the upstream official product did not exist at catalog generation. UNKNOWN means the value could not be parsed from an existing product without invention.",
+  "catalog_sha256": "1f9c2ddb16cf58d868867edf4fe7dd3ded2b36843b06c549a6d2958a90a51456"
+}

@@ -9,7 +9,10 @@ import numpy as np
 import pandas as pd
 from pyproj import Geod
 
+from .time_qc import classify_timezone
+
 GEOD = Geod(ellps="WGS84")
+LOCAL_TZ = "Europe/Rome"
 
 
 def infer_device_id(name: str) -> str:
@@ -49,9 +52,14 @@ def inventory_csvs(input_dir: str | Path) -> pd.DataFrame:
             df = pd.read_csv(path)
         except Exception:
             continue
-        # timestamp parsing
-        ts = pd.to_datetime(df.iloc[:, 0], errors="coerce")
+        # timestamp parsing: keep the original series for timestamp_start/end,
+        # and also emit UTC/local fields derived from explicit offsets when present.
+        time_col = df.iloc[:, 0]
+        ts = pd.to_datetime(time_col, errors="coerce")
+        parsed_utc = pd.to_datetime(time_col, errors="coerce", utc=True, format="mixed")
+        timezone_original, _ = classify_timezone(path.name, time_col)
         valid_ts = ts.dropna()
+        valid_utc = parsed_utc.dropna()
         if not valid_ts.empty:
             ts_sorted = valid_ts.sort_values()
             dt = ts_sorted.diff().dt.total_seconds().dropna()
@@ -62,6 +70,13 @@ def inventory_csvs(input_dir: str | Path) -> pd.DataFrame:
             gap_duration = float(dt[dt > 2].sum()) if len(dt) > 0 else 0.0
         else:
             dt_median = dt_p01 = dt_p99 = gap_count = gap_duration = np.nan
+        if not valid_utc.empty:
+            time_utc_start = valid_utc.min()
+            time_utc_end = valid_utc.max()
+            time_local_start = time_utc_start.tz_convert(LOCAL_TZ)
+            time_local_end = time_utc_end.tz_convert(LOCAL_TZ)
+        else:
+            time_utc_start = time_utc_end = time_local_start = time_local_end = pd.NaT
 
         lat = pd.to_numeric(df.get("Lat", pd.Series(dtype=float)), errors="coerce")
         lon = pd.to_numeric(df.get("Lon", pd.Series(dtype=float)), errors="coerce")
@@ -86,11 +101,11 @@ def inventory_csvs(input_dir: str | Path) -> pd.DataFrame:
                 "nominal_date": infer_nominal_date(path.name),
                 "timestamp_start": valid_ts.min() if not valid_ts.empty else pd.NaT,
                 "timestamp_end": valid_ts.max() if not valid_ts.empty else pd.NaT,
-                "timezone_original": "unknown",
-                "time_utc_start": pd.NaT,
-                "time_utc_end": pd.NaT,
-                "time_local_start": pd.NaT,
-                "time_local_end": pd.NaT,
+                "timezone_original": timezone_original,
+                "time_utc_start": time_utc_start,
+                "time_utc_end": time_utc_end,
+                "time_local_start": time_local_start,
+                "time_local_end": time_local_end,
                 "duration_s": float((valid_ts.max() - valid_ts.min()).total_seconds()) if not valid_ts.empty else np.nan,
                 "n_rows": int(len(df)),
                 "n_columns": int(df.shape[1]),

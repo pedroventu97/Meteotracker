@@ -9,6 +9,7 @@ from pathlib import Path
 
 import pandas as pd
 
+from .analysis_settings import settings_fingerprint
 from .session_qc.diagnostics import write_all_diagnostics
 from .session_qc.metrics import build_reference_frame, compute_segment_metrics, compute_session_metrics, load_campaign_frames
 from .session_qc.outputs import build_segment_reason_codes, build_session_reason_codes, write_campaign_json, write_policy_snapshot
@@ -74,6 +75,10 @@ def run_session_qc(
     segment_qc = compute_segment_status(segment_metrics, session_policy, profile)
     session_qc = compute_session_status(session_metrics, session_policy, profile)
     suitability = compute_all_suitability(session_qc, suitability_policy, segment_qc)
+
+    qc_fingerprint = settings_fingerprint(root / "config")
+    session_qc["qc_config_fingerprint"] = qc_fingerprint
+    session_qc["qc_version"] = CONFIG_VERSION
 
     segment_qc.to_csv(output_root / "segment_qc_inventory.csv", index=False)
     session_qc.to_csv(output_root / "session_qc_inventory.csv", index=False)

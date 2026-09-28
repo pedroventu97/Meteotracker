@@ -10,6 +10,11 @@ __pycache__/
 .pytest_cache/
 .mypy_cache/
 .ruff_cache/
+.gate*/
+.tmp*/
+.netatmo_mapping_step2/
+.scientific_commit_audit_*/
+src/meteotracker_qc.egg-info/
 .coverage
 htmlcov/
 
@@ -34,9 +39,20 @@ data/raw/**/*.zip
 
 # Full per-campaign generated outputs
 outputs/recommended/*/
+outputs/permissive/*/
+outputs/restrictive/*/
 outputs/run*/
 outputs/temp*/
 outputs/verification*/
+outputs/audit/
+outputs/repeated_routes/
+outputs/session_qc/
+outputs/figures/
+outputs/permissive/
+outputs/restrictive/
+outputs/sensitivity/
+outputs/spatial_density/
+outputs/qc_v2/
 
 # Generated large or binary outputs
 *.parquet
@@ -45,3 +61,8 @@ outputs/verification*/
 *.zip
 backup*/
 archive*/
+
+# Windows packaging artifacts
+build/
+dist/
+*.spec

@@ -21,6 +21,7 @@ from .scoring import build_comparison_opportunities
 from .segments import consolidate_segments
 from .tracks import CampaignTracks, PartTrack, prepare_campaign_tracks
 
+REPO_ROOT = Path(__file__).resolve().parents[3]
 logger = logging.getLogger("meteotracker_qc.repeated_routes")
 
 
@@ -252,11 +253,17 @@ def run_pipeline(
     )
 
 
+def _csv_without_geometry(frame: pd.DataFrame, path: Path) -> None:
+    frame.drop(columns=["geometry"], errors="ignore").to_csv(path, index=False)
+
+
 def write_outputs(result: PipelineResult, output_dir: Path) -> None:
     output_dir.mkdir(parents=True, exist_ok=True)
     result.inventory_df.to_csv(output_dir / "campaign_inventory.csv", index=False)
     result.candidate_pairs_df.to_csv(output_dir / "candidate_pairs.csv", index=False)
     result.comparison_df.to_csv(output_dir / "comparison_opportunities.csv", index=False)
+    _csv_without_geometry(result.segments_df, output_dir / "repeated_segments.csv")
+    _csv_without_geometry(result.passages_df, output_dir / "segment_passages.csv")
 
     result.point_segment_memberships.drop(columns=['geometry'], errors='ignore').to_csv(
         output_dir / 'point_segment_memberships.csv', index=False,

@@ -147,6 +147,51 @@ def test_profile_controls_runtime_and_preview_results(qtbot, main_window):
     assert protected(window.workspace) == before
 
 
+def test_session_refresh_preserves_checked_rows(qtbot, main_window):
+    window = open_window(qtbot, main_window)
+    select(window, 0)
+    idle(qtbot, window)
+    selected_before = window.selected_ids()
+    generation_before = window.generation
+
+    window.refresh_sessions()
+    idle(qtbot, window)
+
+    assert window.selected_ids() == selected_before
+    assert window.session_table.item(0, 0).checkState() == Qt.CheckState.Checked
+    assert window.generation == generation_before
+
+
+def test_time_series_canvas_renders_after_analysis(qtbot, main_window, recwarn):
+    window = open_window(qtbot, main_window)
+    select(window, 0)
+    idle(qtbot, window)
+    window.run_preview()
+    idle(qtbot, window)
+
+    assert window.analysis is not None
+    assert not any("constrained_layout not applied" in str(w.message) for w in recwarn)
+    window.tabs.setCurrentIndex(2)
+    QApplication.processEvents()
+    assert window.time_canvas.width() > 0 and window.time_canvas.height() > 0
+    assert window.time_canvas.figure.axes
+    assert any(axis.lines for axis in window.time_canvas.figure.axes[:2])
+    assert window.tabs.currentWidget().isVisible()
+
+
+@pytest.mark.parametrize("size", [(1280, 720), (853, 480)])
+def test_map_canvas_expands_in_results_area(qtbot, main_window, size):
+    window = open_window(qtbot, main_window)
+    window.resize(*size)
+    select(window, 0)
+    idle(qtbot, window)
+    QApplication.processEvents()
+
+    assert window.map.canvas.width() > 100
+    assert window.map.canvas.width() > window.map.tracks.width()
+    assert window.top.height() < window.vertical.height()
+
+
 def test_responsive_worker_cancel_close_confirmation(qtbot, main_window, monkeypatch):
     window = open_window(qtbot, main_window)
     select(window, 0)
@@ -202,6 +247,48 @@ def test_geometry_persist_and_720p_layout(qtbot, main_window):
     assert second.width() <= 853
     assert second.height() <= 480
     second.close()
+
+
+@pytest.mark.parametrize("size", [(1280, 720), (853, 480)])
+def test_session_table_prioritizes_identity_for_many_long_sessions(qtbot, main_window, monkeypatch, size):
+    long_id = "2026-09-28__20260928T10_15_00_mtdicambo_DEVICE_Bologna-Bologna__" + "x" * 48
+    rows = []
+    for index in range(44):
+        campaign_id = ("campagna_0", "campagna_1")[index] if index < 2 else f"nuova_sessione_{index:02d}_{'y' * 24}"
+        rows.append({
+            "campaign_id": long_id if index == 0 else campaign_id,
+            "date": "2026-09-28",
+            "start": "2026-09-28 10:15:00+00:00",
+            "end": "2026-09-28 10:30:00+00:00",
+            "source_file": f"09-28/{campaign_id}.csv",
+            "batch": "09-28",
+            "rows": 1200,
+            "duration_s": 900.0,
+            "distance_km": 8.5,
+            "session_qc_status": "Non disponibile",
+            "suitability": {},
+            "available_outputs": [],
+            "raw_available": True,
+        })
+    monkeypatch.setattr(main_window.service, "list_sessions", lambda **kwargs: rows)
+    window = open_window(qtbot, main_window)
+    window.resize(*size)
+    QApplication.processEvents()
+
+    assert window.session_table.rowCount() == 44
+    assert window.session_table.columnWidth(0) >= 280
+    assert window.session_table.item(0, 0).toolTip() == long_id
+
+    select(window, 0)
+    select(window, 1)
+    assert window.selected_ids() == [long_id, "campagna_1"]
+    window.search.setText("nuova_sessione_17")
+    assert sum(not window.session_table.isRowHidden(row) for row in range(44)) == 1
+    window.search.clear()
+    assert sum(not window.session_table.isRowHidden(row) for row in range(44)) == 44
+    window.select_all(False)
+    assert window.selected_ids() == []
+    window.close()
 
 
 def test_readable_log_filters_copy_and_full_json(qtbot, tmp_path):

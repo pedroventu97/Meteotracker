@@ -9,7 +9,7 @@ from PySide6.QtGui import QDesktopServices
 from PySide6.QtCore import QUrl
 from PySide6.QtWidgets import (QAbstractItemView, QApplication, QCheckBox, QComboBox, QDialog, QFileDialog,
     QHBoxLayout, QInputDialog, QLabel, QLineEdit, QMainWindow, QMessageBox, QPlainTextEdit, QPushButton,
-    QScrollArea, QSizePolicy, QSplitter, QTabWidget, QTableWidget, QTableWidgetItem, QVBoxLayout, QWidget)
+    QHeaderView, QScrollArea, QSizePolicy, QSplitter, QTabWidget, QTableWidget, QTableWidgetItem, QVBoxLayout, QWidget)
 
 from ..analysis_settings import DEFAULT_ACTIVE
 from ..session_analysis import AnalysisResult
@@ -42,6 +42,25 @@ def readonly_table():
     return table
 
 
+def configure_session_table(table):
+    """Prioritize session identity while keeping the list compact."""
+    header = table.horizontalHeader()
+    header.setSectionResizeMode(QHeaderView.ResizeMode.Interactive)
+    header.setStretchLastSection(True)
+    header.setMinimumSectionSize(48)
+    table.setWordWrap(False)
+    table.setTextElideMode(Qt.TextElideMode.ElideRight)
+    table.setHorizontalScrollMode(QAbstractItemView.ScrollMode.ScrollPerPixel)
+    table.setColumnWidth(0, 300)
+    for column in range(1, 12):
+        table.setColumnWidth(column, 96)
+    table.setColumnWidth(1, 104)
+    table.setColumnWidth(2, 150)
+    table.setColumnWidth(3, 150)
+    table.setColumnWidth(4, 220)
+    table.setColumnWidth(5, 88)
+
+
 def scroll_panel(widget):
     """Keep controls accessible without imposing their summed minimum on the window."""
     area = QScrollArea()
@@ -68,6 +87,7 @@ class SessionAnalysisWindow(QMainWindow):
         self.pending_ids = []
         self._closing = False
         self._rendering = False
+        self._pending_timeseries = None
         self.setWindowTitle("Analizza sessioni — Anteprima read-only")
         self.resize(1240, 700)
         self._build_ui()
@@ -185,7 +205,7 @@ class SessionAnalysisWindow(QMainWindow):
         rules_button.clicked.connect(self.show_session_rules)
         tl.addWidget(rules_button)
         self.top.addWidget(scroll_panel(thresholds))
-        self.top.setSizes([540, 280, 360])
+        self.top.setSizes([440, 240, 300])
         self.vertical.addWidget(self.top)
         lower = QWidget()
         ll = QVBoxLayout(lower)
@@ -218,6 +238,8 @@ class SessionAnalysisWindow(QMainWindow):
         ts.addWidget(self.time_toolbar)
         ts.addWidget(self.time_canvas, 1)
         self.tabs.addTab(times, "Serie temporali")
+        self.timeseries_tab = times
+        self.tabs.currentChanged.connect(lambda _index: self.render_timeseries())
         self.map = RouteMap()
         self.tabs.addTab(self.map, "Mappa")
         self.comparison = readonly_table()
@@ -253,7 +275,7 @@ class SessionAnalysisWindow(QMainWindow):
         self.tabs.setCurrentWidget(self.map)
         ll.addWidget(self.tabs, 1)
         self.vertical.addWidget(lower)
-        self.vertical.setSizes([180, 490])
+        self.vertical.setSizes([145, 555])
         self.vertical.setStretchFactor(1, 1)
         layout.addWidget(self.vertical, 1)
         self.message = QLabel("Pronto")
@@ -499,22 +521,40 @@ class SessionAnalysisWindow(QMainWindow):
         if isinstance(value, dict) and value.get("status") == "cancelled":
             self.message.setText("Operazione annullata; dati ufficiali invariati")
         elif operation == "list_sessions" and value is not None:
+            selected_order = self.selected_ids()
+            selected_ids = set(selected_order)
             self.sessions = value
             self._rendering = True
-            fill_table(self.session_table, value, [("campaign_id", "Sessione"), ("date", "Data"), ("start", "Inizio UTC"),
-                ("end", "Fine UTC"), ("source_file", "Sorgente"), ("batch", "Batch"), ("rows", "Righe"),
-                ("duration_s", "Durata s"), ("distance_km", "Distanza km"), ("session_qc_status", "Session QC"),
-                ("suitability", "Suitability"), ("available_outputs", "Output disponibili")])
-            for row, entry in enumerate(value):
-                item = self.session_table.item(row, 0)
-                item.setData(Qt.ItemDataRole.UserRole, entry["campaign_id"])
-                item.setFlags(item.flags() | Qt.ItemFlag.ItemIsUserCheckable)
-                item.setCheckState(Qt.CheckState.Unchecked)
-            for combo, key, title in ((self.batch, "batch", "Tutti i batch"), (self.status_filter, "session_qc_status", "Tutti gli stati")):
-                combo.clear()
-                combo.addItems([title, *sorted({str(r[key]) for r in value})])
-            self._rendering = False
-            self.selection_changed()
+            self.session_table.setUpdatesEnabled(False)
+            self.session_table.blockSignals(True)
+            try:
+                fill_table(self.session_table, value, [("campaign_id", "Sessione"), ("date", "Data"), ("start", "Inizio UTC"),
+                    ("end", "Fine UTC"), ("source_file", "Sorgente"), ("batch", "Batch"), ("rows", "Righe"),
+                    ("duration_s", "Durata s"), ("distance_km", "Distanza km"), ("session_qc_status", "Session QC"),
+                    ("suitability", "Suitability"), ("available_outputs", "Output disponibili")])
+                configure_session_table(self.session_table)
+                for row, entry in enumerate(value):
+                    item = self.session_table.item(row, 0)
+                    item.setData(Qt.ItemDataRole.UserRole, entry["campaign_id"])
+                    item.setFlags(item.flags() | Qt.ItemFlag.ItemIsUserCheckable)
+                    item.setCheckState(Qt.CheckState.Checked if entry["campaign_id"] in selected_ids else Qt.CheckState.Unchecked)
+                for combo, key, title in ((self.batch, "batch", "Tutti i batch"), (self.status_filter, "session_qc_status", "Tutti gli stati")):
+                    combo.blockSignals(True)
+                    combo.clear()
+                    combo.addItems([title, *sorted({str(r[key]) for r in value})])
+                    combo.blockSignals(False)
+            finally:
+                self.session_table.blockSignals(False)
+                self.session_table.setUpdatesEnabled(True)
+                self._rendering = False
+            self.apply_filters()
+            current_ids = self.selected_ids()
+            self.pending_ids = current_ids
+            self.selection_label.setText(f"{len(current_ids)} / {len(self.sessions)} selezionate")
+            if current_ids != selected_order:
+                self.selection_changed()
+            else:
+                self.update_controls()
             self.message.setText(f"{len(value)} sessioni dal manifest")
         elif isinstance(value, AnalysisResult):
             self.discard_analysis()
@@ -554,11 +594,18 @@ class SessionAnalysisWindow(QMainWindow):
         fill_table(self.flags_table, rows, [("flag", "Flag / famiglia"), ("count", "Osservazioni"), ("kind", "Tipo"), ("evaluation", "Valutazione")])
         # Rendering only: QC and file IO have already completed in the worker.
         from ..analysis_plots import timeseries_figure
-        figure = timeseries_figure(self.analysis.frames[cid], summary["profile"])
+        self._pending_timeseries = timeseries_figure(self.analysis.frames[cid], summary["profile"])
+        self.render_timeseries()
+
+    def render_timeseries(self):
+        if self._pending_timeseries is None or not self.timeseries_tab.isVisible():
+            return
+        figure = self._pending_timeseries
         self.time_canvas.figure = figure
         figure.set_canvas(self.time_canvas)
-        self.time_canvas.draw_idle()
+        self.time_canvas.draw()
         self.time_toolbar.update()
+        self._pending_timeseries = None
 
     def show_flag(self, row, _column):
         if not self.analysis:
@@ -589,6 +636,7 @@ class SessionAnalysisWindow(QMainWindow):
         if self.analysis:
             self.analysis.close()
             self.analysis = None
+            self._pending_timeseries = None
             self.map.set_analysis(None)
             self.result_session.clear()
             self.summary_table.setRowCount(0)

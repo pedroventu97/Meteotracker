@@ -1,9 +1,12 @@
+import pytest
+from pathlib import Path
 
 import numpy as np
 import pandas as pd
 
 from meteotracker_qc.stabilization import detect_sensor_stabilization
 
+RAW_ROOT = Path(__file__).resolve().parent.parent / "data" / "raw"
 
 
 def test_sensor_stabilization_detects_warm_up():
@@ -119,3 +122,34 @@ def test_min_stable_seconds_is_actually_used():
     out_short = detect_sensor_stabilization(temps, config=short_cfg, time_utc=time_utc, segment_id=segment_id)
     out_long = detect_sensor_stabilization(temps, config=long_cfg, time_utc=time_utc, segment_id=segment_id)
     assert out_long["qc_sensor_stabilization"].sum() > out_short["qc_sensor_stabilization"].sum()
+
+
+@pytest.mark.real_data
+def test_real_data_regression_stabilization_no_longer_scattered_mid_trip():
+    """Regression for the audit finding: on the real 06-20 campaign, the old
+    whole-trip detector flagged 130 rows, 127 of them (98%) after row 120.
+    The fixed detector must be a genuine leading window (never reactivates).
+    """
+    from meteotracker_qc.gps_qc import detect_gps_issues
+    from meteotracker_qc.time_qc import detect_time_issues
+
+    csv_path = RAW_ROOT / "06-20" / "20260620T12_48_24_mtdicambo_AC4D162B317E_Bologna-Bologna.csv"
+    assert csv_path.exists(), f"regression fixture missing: {csv_path}"
+    raw = pd.read_csv(csv_path, na_values=["-"])
+    t = detect_time_issues(raw)
+    g = detect_gps_issues(t)
+    out = detect_sensor_stabilization(
+        g["Temp[°C]"], time_utc=g["time_utc"], segment_id=g["segment_id"], speed_kmh=g["speed_device_kmh"]
+    )
+    flags = out["qc_sensor_stabilization"]
+    assert flags.sum() > 0
+    assert _is_leading_window(flags)
+    n_flagged = int(flags.sum())
+    idx_true = np.flatnonzero(flags.to_numpy())
+    n_beyond_120 = int((idx_true > 120).sum())
+    # The old bug flagged 127/130 (98%) beyond row 120; the fix must not
+    # reproduce that pattern of *scattered* late reactivation. Some flagged
+    # rows legitimately beyond row 120 are fine (a slow-to-stabilize leading
+    # window), as long as the region is contiguous from row 0 (already
+    # checked by _is_leading_window above).
+    assert idx_true[0] == 0

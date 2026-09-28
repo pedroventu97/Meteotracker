@@ -6,8 +6,7 @@ from matplotlib.backends.backend_agg import FigureCanvasAgg
 
 
 def timeseries_figure(frame, profile):
-    figure = Figure(figsize=(9, 7), layout="constrained")
-    FigureCanvasAgg(figure)
+    figure = Figure(figsize=(9, 7))
     axes = figure.subplots(3, 1, sharex=True)
     time = frame.time_utc
     keep = frame[f"keep_{profile}"]
@@ -26,12 +25,14 @@ def timeseries_figure(frame, profile):
     axes[2].set_xlabel("Ora UTC")
     if axes[2].collections:
         axes[2].legend(fontsize=5, loc="upper left", bbox_to_anchor=(1, 1))
+    figure.subplots_adjust(left=0.10, right=0.80, top=0.97, bottom=0.10, hspace=0.24)
     return figure
 
 
 def write_session_figures(frame, summary, directory, token):
     token.checkpoint()
     figure = timeseries_figure(frame, summary["profile"])
+    FigureCanvasAgg(figure)
     figure.savefig(directory / "timeseries.png", dpi=120)
     figure.clear()
     token.checkpoint()

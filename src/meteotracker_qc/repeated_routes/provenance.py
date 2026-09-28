@@ -18,6 +18,11 @@ import yaml
 
 from .config import RepeatedRoutesConfig
 
+# Existing schema identifier. Not a new semantic version of the matcher.
+MATCHING_ALGORITHM_VERSION = "repeated_routes_schema_version_3"
+OFFICIAL_PRODUCT_STATUS = "OFFICIAL"
+AUDIT_PRODUCT_STATUS = "DERIVED_NOT_YET_CANONICAL"
+
 
 def _git_commit(repo_root: Path) -> str | None:
     try:
@@ -37,12 +42,40 @@ def _sha256(path: Path) -> str:
     return digest.hexdigest()
 
 
+def matching_config_fingerprint(rr_config: RepeatedRoutesConfig, config_path: Path | None = None) -> str:
+    """Hash the matching configuration actually used. Does not change the algorithm."""
+    digest = hashlib.sha256()
+    digest.update(MATCHING_ALGORITHM_VERSION.encode())
+    digest.update(json.dumps(rr_config.to_dict(), sort_keys=True, default=str).encode())
+    if config_path is not None and config_path.exists():
+        digest.update(config_path.name.encode())
+        digest.update(config_path.read_bytes())
+    return digest.hexdigest()
+
+
 def build_provenance(
     *, repo_root: Path, input_files: list[Path], qc_profile: str,
     rr_config: RepeatedRoutesConfig, qc_config_path: Path,
+    matching_config_path: Path | None = None,
 ) -> dict:
+    from ..analysis_settings import settings_fingerprint
+
+    qc_fingerprint = "NOT_AVAILABLE"
+    if qc_config_path.parent.exists():
+        try:
+            qc_fingerprint = settings_fingerprint(qc_config_path.parent)
+        except FileNotFoundError:
+            qc_fingerprint = "NOT_AVAILABLE"
+    matching_path = matching_config_path
+    if matching_path is None:
+        candidate = repo_root / "config" / f"repeated_routes_{rr_config.name}.yaml"
+        matching_path = candidate if candidate.exists() else None
     return {
         "repeated_routes_schema_version": 3,
+        "matching_algorithm_version": MATCHING_ALGORITHM_VERSION,
+        "matching_config_fingerprint": matching_config_fingerprint(rr_config, matching_path),
+        "qc_config_fingerprint": qc_fingerprint,
+        "product_status": OFFICIAL_PRODUCT_STATUS,
         "membership_model": "unique original-point/passage/segment memberships with separate match support",
         "consolidation_model": "complete corridor compatibility with connected pairwise evidence",
         "execution_datetime": datetime.now(timezone.utc).isoformat(),
@@ -55,6 +88,7 @@ def build_provenance(
         "configuration": {
             "qc_profile": qc_profile,
             "qc_config_path": str(qc_config_path),
+            "matching_config_path": str(matching_path) if matching_path else "NOT_AVAILABLE",
             "repeated_routes_config": rr_config.to_dict(),
         },
         "software_versions": {

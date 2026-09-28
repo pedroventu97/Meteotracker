@@ -81,19 +81,37 @@ def main(argv: list[str] | None = None) -> None:
         raise SystemExit(1) from exc
 
     write_outputs(result, output_dir)
-    logger.info("Wrote campaign_inventory.csv, candidate_pairs.csv, comparison_opportunities.csv, repeated_routes.gpkg to %s", output_dir)
+    logger.info(
+        "Wrote campaign_inventory.csv, repeated_segments.csv, segment_passages.csv, "
+        "point_segment_memberships.csv, point_segment_match_support.csv, repeated_routes.gpkg to %s",
+        output_dir,
+    )
 
     input_files = [manifest_path] + [raw_dir / s for s in result.inventory_df["source_file"]]
+    matching_config_path = REPO_ROOT / "config" / f"repeated_routes_{args.config}.yaml"
+    if not matching_config_path.exists():
+        matching_config_path = Path(args.config) if Path(args.config).is_file() else None
     provenance = build_provenance(
         repo_root=REPO_ROOT, input_files=input_files, qc_profile=args.profile,
         rr_config=rr_config, qc_config_path=qc_config_path,
+        matching_config_path=matching_config_path,
     )
     provenance["timings_seconds"] = result.timings
     provenance["candidate_stats"] = result.candidate_stats
     provenance["membership_metrics"] = membership_metrics(result.point_segment_memberships, result.point_segment_match_support)
     provenance["cache_stats"] = result.cache_stats
     provenance["full_rebuild"] = args.full_rebuild
+    provenance["n_campaigns"] = int(len(result.inventory_df))
+    provenance["n_segments"] = int(len(result.segments_df))
+    provenance["n_passages"] = int(len(result.passages_df))
+    provenance["n_memberships"] = int(len(result.point_segment_memberships))
+    provenance["n_supporting_matches"] = int(len(result.point_segment_match_support))
     write_provenance(output_dir / "provenance.json", provenance)
+    from ..campaign_catalog import write_campaign_catalog
+    catalog_paths = write_campaign_catalog(REPO_ROOT)
+    provenance["campaign_catalog"] = {key: str(value) for key, value in catalog_paths.items()}
+    write_provenance(output_dir / "provenance.json", provenance)
+    logger.info("Wrote official campaign catalog to %s", catalog_paths["catalog"])
 
     if not args.skip_sensitivity:
         logger.info("Running sensitivity analysis")

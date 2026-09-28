@@ -7,9 +7,11 @@ import socket
 import numpy as np
 import pandas as pd
 import pytest
+from matplotlib.backends.backend_agg import FigureCanvasAgg
 
 from meteotracker_qc.application import ApplicationService
 from meteotracker_qc.analysis_settings import DEFAULT_ACTIVE
+from meteotracker_qc.analysis_plots import timeseries_figure
 from meteotracker_qc.cli import main
 from meteotracker_qc.map_preview import draw_map, map_crs, render_indices, track_color
 from meteotracker_qc.operation import CancellationToken, OperationCancelled
@@ -114,6 +116,15 @@ def test_multiple_sessions_real_profiles_and_figures(preview):
         for p in ("recommended", "permissive", "restrictive"):
             frame = pd.read_parquet(next((directory / p).glob("*.parquet")))
             assert summary["keep_by_profile"][p] == int(frame[f"keep_{p}"].sum())
+
+
+def test_timeseries_figure_does_not_attach_agg_canvas(preview):
+    _, result = preview
+    campaign_id = result.report["sessions"][0]["campaign_id"]
+    figure = timeseries_figure(result.frames[campaign_id], "recommended")
+    assert not isinstance(figure.canvas, FigureCanvasAgg)
+    assert len(figure.axes) == 3
+    assert [len(axis.lines) for axis in figure.axes] == [2, 2, 0]
 
 
 def test_custom_runtime_preset_and_schema_rejection(service):
