@@ -112,11 +112,11 @@ Rather than keeping four full copies of every artifact on disk, `outputs/sensiti
 
 ## Gestione duplicati
 
-Of the 49 raw CSVs under `data/raw/` (39 through the original audit, plus 10 more added 2026-08 for the 2026-07-22/07-30 campaigns), 5 are redundant re-exports of a trip already present under a different filename (see `reports/Meteotracker_QC_Audit_Report.md` for the evidence and `data/manifests/campaign_manifest.csv` / `duplicate_groups.csv` for the machine-readable mapping). **No raw data is ever deleted or modified** — all 49 files stay in `data/raw/` permanently.
+Of the raw CSVs under `data/raw/` (60 as of the 2026-10-15 manifest `data/manifests/campaign_manifest_20261015T0835.csv`; originally 49 under `data/raw/`: 39 through the original audit, plus 10 more added 2026-08 for the 2026-07-22/07-30 campaigns), 5 are redundant re-exports of a trip already present under a different filename (see `reports/Meteotracker_QC_Audit_Report.md` for the evidence and `data/manifests/campaign_manifest.csv` / `duplicate_groups.csv` for the machine-readable mapping). **No raw data is ever deleted or modified** — all raw files stay in `data/raw/` permanently.
 
 Duplication is handled at the analysis layer instead:
 
-- By default, `run_qc.py` processes only the 44 canonical campaigns (`exclude_from_analysis == False` in the manifest). This is what `outputs/recommended/` is built from (the `outputs/sensitivity/` summaries still reflect the original 39-file set -- see note above).
+- By default, `run_qc.py` processes only the canonical campaigns (`exclude_from_analysis == False` in the manifest): 44 in the official `campaign_manifest.csv`, 55 in the 2026-10-15 refresh `campaign_manifest_20261015T0835.csv` (see `reports/REPORT_PRINCIPALE.md`). This is what `outputs/recommended/` is built from (the `outputs/sensitivity/` summaries still reflect the original 39-file set -- see note above).
 - Pass `--include-all-files` to process all 49 files, including the 5 known-redundant ones (e.g. to reproduce the full historical audit, which was run and verified against the original 39).
 - `inventory.csv` (written by every run) always lists all files found under `--input`, regardless of this flag — it's a raw-data inventory, not a filtered analysis set.
 
