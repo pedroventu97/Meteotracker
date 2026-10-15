@@ -23,6 +23,7 @@ class AnalysisNavigationToolbar(NavigationToolbar2QT):
 class RouteMap(QWidget):
     def __init__(self, parent=None):
         super().__init__(parent)
+        self.setMinimumHeight(180)
         self.preview = None
         self.frames = {}
         self.profile = "recommended"
@@ -69,6 +70,7 @@ class RouteMap(QWidget):
         splitter.addWidget(canvas_container)
         splitter.setStretchFactor(1, 1)
         splitter.setSizes([170, 800])
+        splitter.setMinimumHeight(170)
         layout.addWidget(splitter, 1)
         self.summary = QLabel("Seleziona sessioni per vedere le tracce originali prima del QC.")
         self.summary.setWordWrap(False)

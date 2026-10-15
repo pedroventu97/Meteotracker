@@ -66,3 +66,11 @@ archive*/
 build/
 dist/
 *.spec
+
+# Large regenerable outputs and working figures (2026-10-15)
+outputs/recommended_*/
+outputs/repeated_routes_*/
+outputs/figures_*/
+reports/figures/
+METEOTRACKER-VIRTUAL-FIXED-STATIONS-MANUAL_rev.1.pdf
+mermaid-diagram.png

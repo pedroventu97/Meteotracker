@@ -179,6 +179,71 @@ def test_time_series_canvas_renders_after_analysis(qtbot, main_window, recwarn):
     assert window.tabs.currentWidget().isVisible()
 
 
+def test_session_table_keeps_usable_height_at_compact_size(qtbot, main_window):
+    window = open_window(qtbot, main_window)
+    window.resize(853, 480)
+    QApplication.processEvents()
+
+    row_height = window.session_table.verticalHeader().defaultSectionSize()
+    assert window.session_table.height() >= row_height * 2
+    assert window.map.height() >= 170
+
+
+def test_timeseries_adapts_to_small_canvas_and_resize(qtbot, main_window):
+    window = open_window(qtbot, main_window)
+    select(window, 0)
+    idle(qtbot, window)
+    window.run_preview()
+    idle(qtbot, window)
+    window.tabs.setCurrentIndex(2)
+    window.resize(853, 480)
+    QApplication.processEvents()
+
+    figure = window.time_canvas.figure
+    width, height = figure.get_size_inches()
+    assert width == pytest.approx(window.time_canvas.width() / figure.dpi, rel=.05)
+    assert height == pytest.approx(window.time_canvas.height() / figure.dpi, rel=.05)
+    assert all(axis.get_position().y0 >= 0 and axis.get_position().y1 <= 1 for axis in figure.axes)
+
+    window.resize(1280, 720)
+    QApplication.processEvents()
+    resized_width, resized_height = window.time_canvas.figure.get_size_inches()
+    assert resized_width > width and resized_height > height
+
+
+def test_timeseries_changes_with_result_session(qtbot, main_window):
+    window = open_window(qtbot, main_window)
+    select(window, 0)
+    select(window, 1)
+    idle(qtbot, window)
+    window.run_preview()
+    idle(qtbot, window)
+    window.tabs.setCurrentIndex(2)
+    QApplication.processEvents()
+    first_figure = window.time_canvas.figure
+
+    window.result_session.setCurrentIndex(1)
+    QApplication.processEvents()
+    assert window.time_canvas.figure is not first_figure
+    assert window.time_canvas.figure.axes
+    assert window._pending_timeseries is None
+
+
+def test_preview_result_is_marked_stale_after_selection_change(qtbot, main_window):
+    window = open_window(qtbot, main_window)
+    select(window, 0)
+    idle(qtbot, window)
+    window.run_preview()
+    idle(qtbot, window)
+    analysis = window.analysis
+    assert "selezione corrente" in window.preview_state.text()
+
+    select(window, 1)
+    assert window.analysis is analysis
+    assert "selezione precedente" in window.preview_state.text()
+    assert window.result_session.currentText() == "campagna_0"
+
+
 @pytest.mark.parametrize("size", [(1280, 720), (853, 480)])
 def test_map_canvas_expands_in_results_area(qtbot, main_window, size):
     window = open_window(qtbot, main_window)

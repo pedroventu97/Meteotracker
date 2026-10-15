@@ -1,0 +1,25 @@
+{
+  "spine_cells": 141,
+  "spine_cells_matched": 134,
+  "ns_corridors": [
+    "cv2_003",
+    "cv2_011",
+    "cv2_020",
+    "cv2_018",
+    "cv2_017",
+    "cv2_005",
+    "cv2_012",
+    "cv2_000"
+  ],
+  "ns_bin_passages_median": 9.0,
+  "ns_bin_passages_p90": 13.0,
+  "ns_bin_passages_max": 14,
+  "ns_bin_campaigns_median": 8.0,
+  "diag_true_campaigns_median": 9.0,
+  "product_max_median": 3.0,
+  "product_max_max": 3,
+  "mean_abs_diff_campaigns_vs_true": 1.2761194029850746,
+  "corr_campaigns_vs_true": 0.6401537711306158,
+  "ns_distinct_passages": 149,
+  "ns_distinct_campaigns": 34
+}

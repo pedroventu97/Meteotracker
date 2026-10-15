@@ -4,7 +4,7 @@ from __future__ import annotations
 import json
 from pathlib import Path
 
-from PySide6.QtCore import QSettings, Qt, QTimer, Signal
+from PySide6.QtCore import QEvent, QSettings, Qt, QTimer, Signal
 from PySide6.QtGui import QDesktopServices
 from PySide6.QtCore import QUrl
 from PySide6.QtWidgets import (QAbstractItemView, QApplication, QCheckBox, QComboBox, QDialog, QFileDialog,
@@ -88,6 +88,8 @@ class SessionAnalysisWindow(QMainWindow):
         self._closing = False
         self._rendering = False
         self._pending_timeseries = None
+        self._displayed_timeseries = None
+        self._analysis_selection_ids = set()
         self.setWindowTitle("Analizza sessioni — Anteprima read-only")
         self.resize(1240, 700)
         self._build_ui()
@@ -215,6 +217,10 @@ class SessionAnalysisWindow(QMainWindow):
         self.result_session.setMinimumContentsLength(16)
         self.result_session.currentTextChanged.connect(self.show_session_result)
         ll.addWidget(self.result_session)
+        self.preview_state = QLabel()
+        self.preview_state.setWordWrap(True)
+        self.preview_state.setTextFormat(Qt.TextFormat.PlainText)
+        ll.addWidget(self.preview_state)
         self.tabs = QTabWidget()
         self.summary_table = readonly_table()
         self.tabs.addTab(self.summary_table, "Riepilogo")
@@ -234,6 +240,7 @@ class SessionAnalysisWindow(QMainWindow):
         times = QWidget()
         ts = QVBoxLayout(times)
         self.time_canvas = FigureCanvasQTAgg(Figure(figsize=(8, 5)))
+        self.time_canvas.installEventFilter(self)
         self.time_toolbar = AnalysisNavigationToolbar(self.time_canvas, self)
         ts.addWidget(self.time_toolbar)
         ts.addWidget(self.time_canvas, 1)
@@ -275,7 +282,11 @@ class SessionAnalysisWindow(QMainWindow):
         self.tabs.setCurrentWidget(self.map)
         ll.addWidget(self.tabs, 1)
         self.vertical.addWidget(lower)
-        self.vertical.setSizes([145, 555])
+        self.vertical.setChildrenCollapsible(False)
+        self.top.setMinimumHeight(125)
+        lower.setMinimumHeight(270)
+        self.vertical.setSizes([190, 510])
+        self.vertical.setStretchFactor(0, 1)
         self.vertical.setStretchFactor(1, 1)
         layout.addWidget(self.vertical, 1)
         self.message = QLabel("Pronto")
@@ -318,6 +329,7 @@ class SessionAnalysisWindow(QMainWindow):
         self.pending_ids = self.selected_ids()
         self.generation += 1
         self.selection_label.setText(f"{len(self.pending_ids)} / {len(self.sessions)} selezionate")
+        self._update_preview_staleness()
         if self.map_worker:
             self.map_worker.token.request()
         self.map_timer.start()
@@ -559,8 +571,10 @@ class SessionAnalysisWindow(QMainWindow):
         elif isinstance(value, AnalysisResult):
             self.discard_analysis()
             self.analysis = value
+            self._analysis_selection_ids = {r["campaign_id"] for r in value.report["sessions"]}
             self.result_session.clear()
             self.result_session.addItems([r["campaign_id"] for r in value.report["sessions"]])
+            self._update_preview_staleness()
             self.map.set_analysis(value)
             rows = self.service.compare_sessions(analysis=value)
             fill_table(self.comparison, rows, [(key, key) for key in rows[0]])
@@ -598,14 +612,32 @@ class SessionAnalysisWindow(QMainWindow):
         self.render_timeseries()
 
     def render_timeseries(self):
-        if self._pending_timeseries is None or not self.timeseries_tab.isVisible():
+        figure = self._pending_timeseries or self._displayed_timeseries
+        if figure is None or not self.timeseries_tab.isVisible():
             return
-        figure = self._pending_timeseries
+        width = max(1, self.time_canvas.width())
+        height = max(1, self.time_canvas.height())
+        figure.set_size_inches(width / figure.dpi, height / figure.dpi, forward=True)
         self.time_canvas.figure = figure
         figure.set_canvas(self.time_canvas)
         self.time_canvas.draw()
         self.time_toolbar.update()
+        self._displayed_timeseries = figure
         self._pending_timeseries = None
+
+    def eventFilter(self, watched, event):
+        if watched is self.time_canvas and event.type() == QEvent.Type.Resize:
+            QTimer.singleShot(0, self.render_timeseries)
+        return super().eventFilter(watched, event)
+
+    def _update_preview_staleness(self):
+        if not self.analysis:
+            self.preview_state.clear()
+            return
+        if set(self.pending_ids) != self._analysis_selection_ids:
+            self.preview_state.setText("Risultato visualizzato riferito alla selezione precedente; esegui Anteprima QC per aggiornarlo.")
+        else:
+            self.preview_state.setText("Risultato visualizzato riferito alla selezione corrente.")
 
     def show_flag(self, row, _column):
         if not self.analysis:
@@ -637,11 +669,14 @@ class SessionAnalysisWindow(QMainWindow):
             self.analysis.close()
             self.analysis = None
             self._pending_timeseries = None
+            self._displayed_timeseries = None
+            self._analysis_selection_ids = set()
             self.map.set_analysis(None)
             self.result_session.clear()
             self.summary_table.setRowCount(0)
             self.flags_table.setRowCount(0)
             self.comparison.setRowCount(0)
+            self.preview_state.clear()
 
     def update_controls(self):
         busy = self.busy
