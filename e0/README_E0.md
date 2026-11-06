@@ -15,8 +15,8 @@
 2. **SALTATO:** inventory/recommended già allineati a `recommended_20261015T0835`.
 3. **FATTO (5/11):** tabella flag + poligono AOI (vedi sotto).
 4. **FATTO (5/11 ~17:03):** QC E0 55/55 + split day/route/spatial_block in `outputs/e0_qc_split_20261105T1703/`.
-5. **IN CORSO / 6/11:** commit del lavoro E0 + push branch `feat/meteotracker-windows-app`.
-6. **IN CORSO / 6/11:** changelog `reports/REPORT_PRINCIPALE.md`.
+5. **FATTO (6/11):** commit del lavoro E0 + push branch `feat/meteotracker-windows-app` (include i commit locali precedenti).
+6. **FATTO (6/11):** changelog `reports/REPORT_PRINCIPALE.md`.
 
 ## Step 3 (2026-11-05, locale) - IMPLEMENTATO
 - Flag table writer: `src/meteotracker_qc/flag_table.py` (contratto `qc_flag_schema_E0_v0.1.yaml`); integrazione leggera `MeteotrackerQC.emit_flag_table`.
