@@ -25,7 +25,7 @@ def test_runtime_defaults_leave_official_yaml_unchanged(root, profile):
     assert runtime == yaml.safe_load(before)
     assert settings["differences"] == {}
     assert path.read_bytes() == before
-    assert not next(g for g in settings["groups"] if g["id"] == "invalid_coordinates")["available"]
+    assert next(g for g in settings["groups"] if g["id"] == "invalid_coordinates")["available"]
 
 
 @pytest.mark.parametrize("overrides", [

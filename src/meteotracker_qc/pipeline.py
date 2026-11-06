@@ -22,6 +22,7 @@ from .stabilization import detect_sensor_stabilization
 from .time_qc import classify_timezone, detect_time_issues
 from .ventilation_qc import detect_low_speed_and_ventilation, detect_stop_events
 from .analysis_settings import enabled
+from .flag_table import build_and_write_flag_table
 
 
 def _campaign_output_dir(input_csv: Path, input_root: Path, output_root: Path) -> Path:
@@ -209,6 +210,35 @@ class MeteotrackerQC:
         summary = standardized.groupby("segment_id").agg(**agg_kwargs).reset_index()
         summary["duration_s"] = (summary["end_time_utc"] - summary["start_time_utc"]).dt.total_seconds()
         return summary
+
+
+    def emit_flag_table(
+        self,
+        standardized: pd.DataFrame,
+        output_path: str | Path,
+        *,
+        canonical_campaign_id: str,
+        source_file: str,
+        file_sha256: str | None = None,
+        duplicate_type: str | None = None,
+        config_fingerprint: str = "TBD",
+        code_commit: str = "TBD",
+    ) -> pd.DataFrame:
+        """Write E0 long-form flag table for an already-QC'd frame (no re-run).
+
+        Does not delete rows from `standardized` or touch `data/raw`.
+        """
+        return build_and_write_flag_table(
+            standardized,
+            output_path,
+            canonical_campaign_id=canonical_campaign_id,
+            source_file=source_file,
+            file_sha256=file_sha256,
+            qc_profile=self.profile_name,
+            duplicate_type=duplicate_type,
+            config_fingerprint=config_fingerprint,
+            code_commit=code_commit,
+        )
 
     def inventory(self, input_dir: str | Path) -> pd.DataFrame:
         return inventory_csvs(input_dir)

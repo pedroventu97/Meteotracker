@@ -18,6 +18,7 @@ gps:
   isolated_outlier_excess_m: 60.0      # THR-GPS-004
   speed_disagreement_abs_kmh: 12.0     # THR-GPS-007
   speed_disagreement_rel_fraction: 0.50  # THR-GPS-007
+  aoi_geojson: data/aoi/bologna_e0_aoi_v0.1.geojson  # E0 AOI; qc_coord_outside_aoi
 
 warmup:
   window_size: 5                       # THR-WARM-001 (legacy, rows, no-context mode)

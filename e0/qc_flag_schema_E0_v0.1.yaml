@@ -1,0 +1,60 @@
+# E0 QC flag schema v0.1 (2026-11-05) - table writer IMPLEMENTED (step 3); heavy QC run still pending
+schema_version: "E0-0.1"
+implementation_status: "flag_table+aoi IMPLEMENTED locally 2026-11-05; no heavy E0 QC run yet"
+policy: {flags_never_delete: true, raw_untouched: true, keep_raw: true, every_exclusion_verifiable: true}
+record_fields:
+  flag_id: {type: string, example: "E0F-000001"}
+  canonical_campaign_id: {type: string}
+  source_file: {type: string, note: "path relativo a data/raw"}
+  source_row: {type: int, note: "indice riga 0-based nel CSV raw"}
+  observation_id: {type: string, rule: "<sha256_file[:12]>:<source_row>"}
+  flag_code: {type: string}
+  reason: {type: string, note: "testo leggibile (IT)"}
+  rule_id: {type: string, example: "THR-GPS-001"}
+  qc_profile: {enum: [permissive, recommended, restrictive]}
+  threshold: {type: string}
+  value_observed: {type: string}
+  severity: {enum: [info, warn, exclude]}
+  reversible: {const: true}
+  applied_by: {type: string}
+  applied_at: {type: datetime, tz: "Europe/Rome ISO8601"}
+  code_commit: {type: string, placeholder: "TBD"}
+  config_fingerprint: {type: string, source: "qc_config_fingerprint"}
+flag_codes:   # severity di default = profilo recommended (DESIGN)
+  # campagna / file
+  - {code: DUP_BYTE_IDENTICAL, level: file, severity: exclude, rule: manifest.duplicate_type}
+  - {code: DUP_REDUCED_REEXPORT, level: file, severity: exclude, rule: manifest.duplicate_type}
+  # coordinate / AOI
+  - {code: qc_coord_missing, severity: exclude}
+  - {code: qc_coord_outside_aoi, severity: warn, note: "AOI wired to data/aoi/bologna_e0_aoi_v0.1.geojson (Comune di Bologna); NA solo se lat/lon missing"}
+  - {code: qc_coord_repeated, rule: THR-GPS-003, threshold_rec: "2.0 m", severity: warn}
+  - {code: qc_gps_jump, rule: THR-GPS-001, threshold_rec: "80 m / 2 s", severity: exclude}
+  - {code: qc_isolated_position_outlier, rule: THR-GPS-004, threshold_rec: "40 m", severity: exclude}
+  - {code: qc_gps_freeze, rule: THR-GPS-002, threshold_rec: "0.5 km/h", severity: warn}
+  - {code: qc_off_network_possible, severity: info}
+  # velocità / dinamica
+  - {code: qc_unrealistic_speed, rule: THR-GPS-005, threshold_rec: "150 km/h", severity: exclude}
+  - {code: qc_unrealistic_acceleration, rule: THR-GPS-006, threshold_rec: "5 m/s2", severity: exclude}
+  - {code: qc_speed_disagreement, rule: THR-GPS-007, threshold_rec: "8 km/h o 35%", severity: warn}
+  - {code: qc_low_speed_device, rule: THR-VENT-001, threshold_rec: "7 km/h (07-20 locale)", severity: warn}
+  - {code: qc_low_ventilation_possible, rule: THR-VENT-001, severity: warn}
+  - {code: qc_stationary, severity: warn}
+  - {code: qc_post_stop_recovery, rule: THR-STOP-002, threshold_rec: "30 s", severity: exclude}
+  # tempo
+  - {code: qc_time_parse, severity: exclude}
+  - {code: qc_time_duplicate, severity: exclude}
+  - {code: qc_time_order, severity: exclude}
+  - {code: qc_time_nonpositive_dt, severity: exclude}
+  - {code: qc_sampling_gap_short, rule: THR-TIME-002, threshold_rec: "2x dt", severity: info}
+  - {code: qc_sampling_gap_long, rule: THR-TIME-003, threshold_rec: "5x dt", severity: warn}
+  - {code: qc_segment_restart_recovery, severity: exclude}
+  # sensore / termico
+  - {code: qc_sensor_stabilization, rule: THR-WARM-002/003, threshold_rec: "0.02 C/s, 60 s", severity: exclude}
+  - {code: qc_temp_impossible, threshold_rec: "[-40,60] C", severity: exclude}
+  - {code: qc_temp_spike, rule: THR-THERM-002/003, threshold_rec: "3 MAD, 0.2 C", severity: exclude}
+  - {code: qc_temp_rate_anomaly, rule: THR-THERM-004/005, threshold_rec: "0.25 C/s per 20 s", severity: warn}
+  - {code: qc_sensor_plateau_possible, rule: THR-THERM-006/007, threshold_rec: "0.02 C per 120 s", severity: warn}
+  - {code: qc_humidity_impossible, threshold_rec: "[0,100] %", severity: exclude}
+  - {code: qc_pressure_impossible, threshold_rec: "[850,1100] mbar", severity: exclude}
+profile_mapping:
+  note: "Soglie per permissive/restrictive da config/qc_permissive.yaml e qc_restrictive.yaml; severity exclude ↔ filtering.strict_keep_threshold"

@@ -1,13 +1,99 @@
 from __future__ import annotations
 
+import json
+from functools import lru_cache
+from pathlib import Path
+
 import numpy as np
 import pandas as pd
 from pyproj import Geod
+from shapely.geometry import Point, shape
+from shapely.ops import unary_union
+from shapely.prepared import prep
 
 from .time_qc import estimate_expected_sampling_interval_s
 from .analysis_settings import enabled
 
 GEOD = Geod(ellps="WGS84")
+DEFAULT_AOI_GEOJSON = "data/aoi/bologna_e0_aoi_v0.1.geojson"
+
+
+def _project_root_candidates() -> list[Path]:
+    """Resolve project root without requiring an absolute config path.
+
+    gps_qc.py lives at <root>/src/meteotracker_qc/gps_qc.py when the package
+    is developed from the repo tree (parents[2] == project root).
+    """
+    here = Path(__file__).resolve()
+    return [here.parents[2], Path.cwd()]
+
+
+def _resolve_aoi_path(gps_cfg: dict) -> Path | None:
+    raw = gps_cfg.get("aoi_geojson", DEFAULT_AOI_GEOJSON)
+    if raw is None or raw is False or str(raw).strip() == "":
+        return None
+    candidate = Path(str(raw))
+    if candidate.is_file():
+        return candidate
+    if candidate.is_absolute():
+        return None
+    for root in _project_root_candidates():
+        hit = root / candidate
+        if hit.is_file():
+            return hit
+    return None
+
+
+@lru_cache(maxsize=4)
+def _load_prepared_aoi(path_str: str):
+    path = Path(path_str)
+    with path.open("r", encoding="utf-8") as handle:
+        payload = json.load(handle)
+    geoms = []
+    if payload.get("type") == "FeatureCollection":
+        for feature in payload.get("features", []):
+            geom = feature.get("geometry")
+            if geom is not None:
+                geoms.append(shape(geom))
+    elif payload.get("type") == "Feature":
+        geoms.append(shape(payload["geometry"]))
+    else:
+        geoms.append(shape(payload))
+    if not geoms:
+        raise ValueError(f"AOI GeoJSON has no geometries: {path}")
+    union = unary_union(geoms)
+    if union.is_empty:
+        raise ValueError(f"AOI GeoJSON geometry is empty: {path}")
+    return prep(union)
+
+
+def evaluate_coord_outside_aoi(
+    lat: pd.Series,
+    lon: pd.Series,
+    *,
+    aoi_path: Path | None,
+) -> pd.Series:
+    """Nullable boolean: True outside AOI, False inside, NA when lat/lon missing.
+
+    Missing coordinates are NEVER treated as outside AOI (those stay on
+    qc_coord_missing). If no AOI file is available, returns all-NA.
+    """
+    out = pd.Series(pd.NA, index=lat.index, dtype="boolean")
+    if aoi_path is None:
+        return out
+    try:
+        prepared = _load_prepared_aoi(str(aoi_path.resolve()))
+    except (OSError, ValueError, TypeError, json.JSONDecodeError):
+        return out
+    valid = lat.notna() & lon.notna()
+    if not valid.any():
+        return out
+    lat_v = lat.loc[valid].astype(float)
+    lon_v = lon.loc[valid].astype(float)
+    # Point(x=lon, y=lat) in WGS84
+    outside = [not prepared.contains(Point(float(x), float(y))) for x, y in zip(lon_v, lat_v)]
+    out.loc[valid] = outside
+    return out
 
 
 def _to_numeric(series: pd.Series) -> pd.Series:
@@ -84,7 +170,16 @@ def detect_gps_issues(df: pd.DataFrame, config: dict | None = None) -> pd.DataFr
 
     n = len(out)
     out["qc_coord_missing"] = (lat.isna() | lon.isna()) if enabled(config, "coordinates") else False
-    out["qc_coord_outside_aoi"] = pd.Series(pd.NA, index=out.index, dtype="boolean")
+    # AOI: True/False for valid coords; NA only when lat/lon missing (or AOI unavailable).
+    if enabled(config, "invalid_coordinates"):
+        aoi_path = _resolve_aoi_path(gps_cfg)
+        outside = evaluate_coord_outside_aoi(lat, lon, aoi_path=aoi_path)
+        # Preserve NA for missing coords even if a fallback filled False elsewhere.
+        missing = lat.isna() | lon.isna()
+        outside = outside.mask(missing, pd.NA)
+        out["qc_coord_outside_aoi"] = outside.astype("boolean")
+    else:
+        out["qc_coord_outside_aoi"] = pd.Series(pd.NA, index=out.index, dtype="boolean")
     out["qc_off_network_possible"] = detect_off_network_possible(out)
     out["speed_device_kmh"] = speed_device_kmh
     out["speed_device_valid"] = speed_device_kmh.notna()

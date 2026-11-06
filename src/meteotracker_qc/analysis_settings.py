@@ -22,7 +22,7 @@ GROUPS = {
     "monotonicity": ("Monotonicità", "Ordine temporale; le discontinuità restano confini strutturali.", ("qc_nonmonotonic_timestamp", "qc_time_order"), ()),
     "gaps": ("Gap temporali", "Gap rispetto alla cadenza; segmentazione strutturale sempre attiva.", ("qc_sampling_gap_short", "qc_sampling_gap_long", "qc_time_gap"), ("time",)),
     "coordinates": ("Coordinate mancanti", "Latitudine o longitudine mancanti.", ("qc_coord_missing",), ()),
-    "invalid_coordinates": ("Coordinate non valide / AOI", "Controllo autonomo non implementato nel motore esistente.", (), ()),
+    "invalid_coordinates": ("Coordinate non valide / AOI", "Punto fuori dal poligono AOI E0 (Comune di Bologna).", ("qc_coord_outside_aoi",), ("gps.aoi_geojson",)),
     "gps_jumps": ("Salti GPS", "Salti e outlier isolati; unione nella policy senza doppio conteggio.", ("qc_gps_jump", "qc_isolated_position_outlier", "qc_spatial_jump"), ("gps.gps_jump_distance_m", "gps.gps_jump_dt_s", "gps.isolated_outlier_excess_m")),
     "gps_freeze": ("GPS freeze", "Ripetizione coordinate, freeze e stazionarietà.", ("qc_coord_repeated", "qc_gps_freeze", "qc_possible_gps_freeze", "qc_stationary"), ("gps.freeze_speed_threshold_kmh", "gps.coord_repeated_tolerance_m")),
     "speed": ("Velocità", "Velocità irrealistica e disaccordo dispositivo / GPS.", ("qc_unrealistic_speed", "qc_speed_disagreement"), ("gps.max_speed_kmh_absolute", "gps.speed_disagreement_abs_kmh", "gps.speed_disagreement_rel_fraction")),
@@ -38,7 +38,7 @@ GROUPS = {
     "suitability": ("Suitability", "Policy Session QC e idoneità per tipo di analisi; riferimento recommended.", (), ()),
 }
 MANDATORY = {"schema", "distance", "completeness"}
-UNAVAILABLE = {"invalid_coordinates"}
+UNAVAILABLE = set()  # invalid_coordinates enabled in E0 step 3 (AOI wired)
 DEFAULT_ACTIVE = tuple(k for k in GROUPS if k not in UNAVAILABLE)
 
 # Explicit editing contract: units and admissible input ranges, not new defaults.
