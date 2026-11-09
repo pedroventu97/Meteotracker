@@ -306,7 +306,30 @@ else (STABILIZATION_NOT_REACHED):  flag t ≤ 300 s                         (inv
 - **E1 condizionata:** +985 righe su 4 campagne (03-04 +352, 06-04 +590, 9-16 11:29 +43; 02-20, 02-21, 07-04 14:37 e 9-16 18:36 già coperte).
 
 ### 7.3 Impatto su R (fase B, puramente descrittivo)
-*Sezione da compilare dopo il commit di fase A. Non usata per la scelta (AT-8).*
+**Calcolato dopo il commit di fase A `bbc3121`. Non usato per la scelta (AT-8).**
+- Script: `e0/run_warmup_prereg_threshold_sensitivity.py`.
+- Output: `r_sensitivity_descriptive/warmup_threshold_R_descriptive.csv`.
+- Metodo: P1 diff-day, 1000 bootstrap, varianti centered/detrended/detr_alt, popolazione completa e senza cv2_004.
+- La variante "nessun cap" riproduce `keep_recommended` v0.2 con 0 discordanze.
+
+**Popolazione comune** (stesse celle per tutte le 6 varianti): |ΔR| ≤ 0,012 rispetto a v0.2 in tutte le combinazioni. L'IC di ΔR include 0 in tutte tranne una: cap 600, route, detr_alt, senza cv2_004, ΔR −0,012 [−0,041; −0,001].
+→ La soglia di warm-up **non cambia** la ripetibilità a parità di celle.
+
+**Popolazione propria, R route centered (diff-day):**
+
+| Variante | tutte: R [IC 95 %] | senza cv2_004: R [IC 95 %] |
+|---|---|---|
+| v0.2 (nessun cap sulla conferma) | 0,34 [0,09; 0,50] | 0,12 [−0,07; 0,31] |
+| cap 120 | 0,39 [0,19; 0,50] | 0,17 [−0,02; 0,33] |
+| cap 180 | 0,42 [0,22; 0,53] | 0,19 [0,00; 0,35] |
+| **cap 300 (proposta)** | **0,43 [0,19; 0,56]** | **0,16 [−0,05; 0,34]** |
+| cap 600 | 0,40 [0,08; 0,56] | 0,12 [−0,12; 0,31] |
+| cap 300 + E1 | 0,43 [0,22; 0,56] | 0,16 [−0,04; 0,34] |
+
+- **Spatial block centered:** 0,22–0,27 per tutte le varianti; senza cv2_004, 0,21–0,25.
+- Le differenze tra popolazioni proprie dipendono dal numero di coppie (593–908 su route) e non dalla soglia.
+- Tutti gli IC si sovrappongono ampiamente. Senza cv2_004 l'IC di route include 0 per quasi tutte le varianti.
+- **Nessuna conclusione su R** è tratta o usabile per la scelta della soglia.
 
 ## 8. Limiti scientifici
 1. **Campione piccolo:** 30 real start ≥ 1200 s, 29 pseudo-start da 11 campagne, 7 transitori. Le differenze real/pseudo non sono significative (Fisher p = 0,16; IC degli eccessi che includono 0 salvo warm 60–120 s).
