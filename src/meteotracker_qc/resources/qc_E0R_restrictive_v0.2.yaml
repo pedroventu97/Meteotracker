@@ -2,7 +2,7 @@
 # cambiata dalle verifiche R1-R5 (e0/QC_R_CRITERIA_E0.md). Cambiano solo policy e schema.
 profile_name: restrictive
 policy_file: flag_policy_E0R_v0.2.csv   # E0-QC-R: unica fonte di verità delle azioni
-flag_schema: ../e0/qc_flag_schema_E0_v0.2.yaml  # severità flag table derivate dalla policy
+flag_schema: qc_flag_schema_E0_v0.2.yaml  # bundled copy, byte-identical to e0/ canonical; severità flag table derivate dalla policy
 
 physical_limits:
   temp_min_c: -40.0
