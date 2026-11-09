@@ -32,7 +32,7 @@ richieste impediscono di mostrare risultati asincroni obsoleti.
 
 ## 2. Sessioni disponibili
 
-**44 campagne canoniche**, derivate dal manifest; re-export esclusi e nuove
+Campagne canoniche derivate dal manifest ufficiale: **55** dal 5/11/2026 (catalogo E0); al momento del Gate 2.1 erano 44. Re-export esclusi e nuove
 acquisizioni non diventano sessioni aggiuntive. I sei CSV nei batch `8-1` e `9-8`
 restano nuovi. La lista espone ID, sorgente, batch, orari, righe, durata, distanza,
 Session QC, suitability e disponibilità degli output.
