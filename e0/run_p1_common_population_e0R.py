@@ -34,7 +34,10 @@ from meteotracker_qc.p1_repeatability import common as cp  # noqa: E402
 ROME = ZoneInfo("Europe/Rome")
 LOC_TYPES = {"route": "route", "spatial_block": "spatial_block_id"}
 MASKS = ("old_recommended", "old_flagtable", "consensus", "v02_permissive", "v02_recommended", "v02_restrictive")
-TIERS = {"all_masks": MASKS, "large_masks": ("old_recommended", "v02_permissive", "v02_recommended", "v02_restrictive")}
+TIERS = {"all_masks": MASKS, "large_masks": ("old_recommended", "v02_permissive", "v02_recommended", "v02_restrictive"),
+         # NOT pre-registered (added after seeing that tiers a/b leave < 100 diff-day pairs, before looking at its R):
+         # lets the 100/200/400 pair-count sensitivity run at all. Reported as exploratory.
+         "broad_masks_exploratory": ("old_recommended", "v02_permissive", "v02_recommended")}
 SIZES = (100, 200, 400, "all")
 EXCL_ROUTE = "cv2_004"
 
@@ -59,7 +62,7 @@ def load(e0r_root: Path):
     m = d.merge(n[keep_cols], on=["campaign", "source_row"], suffixes=("", "_v02"), how="inner", validate="one_to_one")
     chk2 = dict(n_v01=len(d), n_v02=len(n), n_joined=len(m),
                 T_identical=bool(((m["T"] == m["T_v02"]) | (m["T"].isna() & m["T_v02"].isna())).all()),
-                split_identical={c: float((m[c].astype(str) == m[c + "_v02"].astype(str)).mean())
+                split_identical={c: _same_na_aware(m[c], m[c + "_v02"])
                                  for c in ("route", "spatial_block_id", "day", "time_utc")})
     masks = {"old_recommended": m["keep_recommended"], "old_flagtable": m["keep_flagtable_exclude"],
              "consensus": m["keep_recommended"] & m["keep_flagtable_exclude"],
@@ -71,6 +74,11 @@ def load(e0r_root: Path):
     return m, chk2
 
 
+def _same_na_aware(a, b) -> float:
+    na_a, na_b = a.isna(), b.isna()
+    return float(((na_a & na_b) | (~na_a & ~na_b & (a.astype(str) == b.astype(str)))).mean())
+
+
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--e0r-root", required=True)
@@ -78,12 +86,13 @@ def main():
     ap.add_argument("--n-boot", type=int, default=1000)
     ap.add_argument("--n-sub", type=int, default=200)
     ap.add_argument("--n-boot-sub", type=int, default=200)
+    ap.add_argument("--out-name", default="common_population")
     a = ap.parse_args()
     t0 = time.time()
     p1_out = Path(a.p1_out)
     if not p1_out.name.startswith("p1_repeatability_E0R_"):
         raise SystemExit("--p1-out must be an outputs/p1_repeatability_E0R_* folder")
-    out = p1_out / "common_population"
+    out = p1_out / a.out_name
     if out.exists():
         raise SystemExit(f"refusing to overwrite {out}")
     (out / "figures").mkdir(parents=True)
@@ -115,7 +124,11 @@ def main():
                         if pt == "diff_day":
                             sens = cp.pair_count_sensitivity(st, SIZES, a.n_sub, a.n_boot_sub, prm.seed)
                             S_rows.append(sens.assign(pop=pop, loc_type=lt, variant=var, tier=tier))
+                    on4 = L.groupby("pair_id")["route"].apply(lambda r: (r.astype(str) == EXCL_ROUTE).any())
                     size_rows.append(dict(pop=pop, loc_type=lt, variant=var, tier=tier, n_pairs_all=len(P),
+                                          n_pairs_touching_cv2_004=int(on4.sum()),
+                                          n_diff_day_touching_cv2_004=int(on4.reindex(
+                                              P.loc[P.pair_type == "diff_day", "pair_id"]).fillna(False).sum()),
                                           n_diff_day=int((P.pair_type == "diff_day").sum()),
                                           n_locations=int(P["loc"].nunique()), n_common_cells=int(L.shape[0])))
                     log(f"[{pop}|{lt}|{var}|{tier}] pairs {len(P)} diff_day {(P.pair_type == 'diff_day').sum()}")
@@ -148,7 +161,7 @@ def figures(out, R, SS):
     import matplotlib.pyplot as plt
     cols = {"old_recommended": "#525252", "old_flagtable": "#a3a3a3", "consensus": "#7c3aed",
             "v02_permissive": "#16a34a", "v02_recommended": "#0369a1", "v02_restrictive": "#b91c1c"}
-    for tier in ("all_masks", "large_masks"):
+    for tier in TIERS:
         fig, axs = plt.subplots(2, 3, figsize=(15, 8), sharex=True)
         for i, lt in enumerate(("route", "spatial_block")):
             for j, var in enumerate(("centered", "detrended", "detr_alt")):
@@ -184,8 +197,9 @@ def figures(out, R, SS):
         plt.close(fig)
     fig, axs = plt.subplots(1, 2, figsize=(12, 4.5), sharey=True)
     for ax, lt in zip(axs, ("route", "spatial_block")):
-        sub = SS[(SS.tier == "large_masks") & (SS.loc_type == lt) & (SS.variant == "centered") & (SS["pop"] == "all")]
-        for m in TIERS["large_masks"]:
+        sub = SS[(SS.tier == "broad_masks_exploratory") & (SS.loc_type == lt) & (SS.variant == "centered")
+                 & (SS["pop"] == "all")]
+        for m in TIERS["broad_masks_exploratory"]:
             s = sub[sub["mask"] == m].sort_values("n_pairs")
             ax.plot(s.n_pairs, s.R_median, marker="o", color=cols[m], label=m)
             ax.fill_between(s.n_pairs, s.R_p2_5, s.R_p97_5, color=cols[m], alpha=.08)
