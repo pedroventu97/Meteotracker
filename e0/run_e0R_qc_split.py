@@ -205,10 +205,17 @@ def build_split(root: Path, prof_dir: Path) -> dict:
     A.to_parquet(root / "split_assignments_E0R.parquet", index=False)
     old = pd.read_parquet(OLD / "split_assignments_E0.parquet")
     m = A.merge(old, on=["canonical_campaign_id", "source_row"], suffixes=("", "_old"), how="outer", indicator=True)
-    same = lambda c: float(((m[c].astype(str) == m[c + "_old"].astype(str))).mean())  # noqa: E731
     return dict(n_obs=int(len(A)), n_campaigns=int(A.canonical_campaign_id.nunique()), lcz_warnings=warns,
                 rows_matched_old=int((m._merge == "both").sum()),
-                identical_to_v01_split={c: same(c) for c in ("route", "spatial_block_id", "day", "time_utc")})
+                identical_to_v01_split={c: same_na_aware(m[c], m[c + "_old"])
+                                        for c in ("route", "spatial_block_id", "lcz", "day", "time_utc")})
+
+
+def same_na_aware(a: pd.Series, b: pd.Series) -> float:
+    """Share of equal values, treating missing==missing as equal (NaN/None/<NA> compare equal)."""
+    na_a, na_b = a.isna(), b.isna()
+    eq = (na_a & na_b) | (~na_a & ~na_b & (a.astype(str) == b.astype(str)))
+    return float(eq.mean())
 
 
 def run():

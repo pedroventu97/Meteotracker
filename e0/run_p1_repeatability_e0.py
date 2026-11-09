@@ -153,21 +153,74 @@ def loo_summary(df, full):
     return out
 
 
+def load_points_e0r(root: Path):
+    """E0-QC-R: masks from three REAL profile runs (policy v0.2) under `root` (outputs/e0R_qc_split_*).
+    keep_<p> comes from <root>/<p>/campaigns/*/..._flagged.csv; the flag-table mask is the recommended run's
+    flag_table_E0R (exclude severities derived from the policy, hence equal to keep_recommended by construction)."""
+    from pyproj import Transformer
+    if not root.name.startswith("e0R_qc_split_"):
+        raise SystemExit(f"--e0r-root must be an outputs/e0R_qc_split_* folder: {root}")
+    split = pd.read_parquet(root / "split_assignments_E0R.parquet")
+    man = pd.read_csv(ROOT / "data" / "manifests" / "campaign_manifest.csv")
+    canon = man[(man.is_canonical.astype(str) == "True") & (man.exclude_from_analysis.astype(str) != "True")]
+    ids = set(canon.canonical_campaign_id)
+    d = split.copy()
+    chk = dict(e0r_root=str(root), n_manifest_canonical=len(ids), manifest_equals_split=set(split.canonical_campaign_id) == ids,
+               n_obs=int(len(d)))
+    for p in PROFILES:
+        parts = []
+        cols = ["source_row", f"keep_{p}"] + (["canonical_temperature_c", "canonical_altitude_m", "speed_gps_kmh"]
+                                                if p == "recommended" else [])
+        for cid in sorted(ids):
+            fs = sorted((root / p / "campaigns" / cid).glob("*_flagged.csv"))
+            if len(fs) != 1:
+                raise SystemExit(f"expected 1 flagged csv for {p}/{cid}, got {len(fs)}")
+            f = pd.read_csv(fs[0], usecols=cols, low_memory=False)
+            f["canonical_campaign_id"] = cid
+            parts.append(f)
+        d = d.merge(pd.concat(parts, ignore_index=True), on=["canonical_campaign_id", "source_row"], how="left",
+                    validate="one_to_one")
+        d[f"keep_{p}"] = d[f"keep_{p}"].astype(str) == "True"
+        chk[f"n_keep_{p}"] = int(d[f"keep_{p}"].sum())
+    ft = pd.read_parquet(root / "recommended" / "flag_table_E0R.parquet",
+                         columns=["canonical_campaign_id", "source_row", "severity", "qc_profile"])
+    ex = ft[(ft.severity == "exclude") & (ft.source_row >= 0)].drop_duplicates(["canonical_campaign_id", "source_row"])
+    ex = ex.assign(flag_exclude=True)
+    d = d.merge(ex[["canonical_campaign_id", "source_row", "flag_exclude"]], how="left",
+                on=["canonical_campaign_id", "source_row"])
+    d["flag_exclude"] = d["flag_exclude"].fillna(False).astype(bool)
+    d["keep_flagtable_exclude"] = ~d["flag_exclude"]
+    chk["n_keep_flagtable_exclude"] = int(d["keep_flagtable_exclude"].sum())
+    chk["flag_table_profiles"] = sorted(ft.qc_profile.astype(str).unique().tolist())
+    chk["agreement_keep_recommended_vs_no_exclude_flag"] = float((d.keep_recommended == ~d.flag_exclude).mean())
+    tr = Transformer.from_crs(4326, 32632, always_xy=True)
+    d["x"], d["y"] = tr.transform(d.lon.to_numpy(), d.lat.to_numpy())
+    d = d.rename(columns={"canonical_campaign_id": "campaign", "canonical_temperature_c": "T", "canonical_altitude_m": "alt"})
+    d["t"] = pd.to_datetime(d.time_utc, utc=True)
+    d["route"] = d["route"].where(d["route"].notna() & (d["route"].astype(str) != ""), None)
+    chk["n_obs_T_missing"] = int(d["T"].isna().sum())
+    return d, chk
+
+
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--n-boot", type=int, default=1000)
     ap.add_argument("--quick", action="store_true", help="recommended only, 200 boot, no LOO (smoke test)")
+    ap.add_argument("--e0r-root", default=None,
+                    help="E0-QC-R: outputs/e0R_qc_split_* root (policy v0.2, real profile runs); "
+                         "output goes to outputs/p1_repeatability_E0R_<ts>")
     a = ap.parse_args()
     t0 = time.time()
     now = datetime.now(ROME)
-    out = ROOT / "outputs" / f"p1_repeatability_E0_{now:%Y%m%dT%H%M}{'_quick' if a.quick else ''}"
+    tag = "E0R" if a.e0r_root else "E0"
+    out = ROOT / "outputs" / f"p1_repeatability_{tag}_{now:%Y%m%dT%H%M}{'_quick' if a.quick else ''}"
     if any(out.name.startswith(f) for f in FORBIDDEN) or out.exists():
         raise SystemExit(f"refusing to write {out}")
     (out / "figures").mkdir(parents=True)
     prm = Params(n_boot=200 if a.quick else a.n_boot)
     rng = np.random.default_rng(prm.seed)
     log(f"output {out}")
-    d, chk = load_points()
+    d, chk = load_points_e0r(Path(a.e0r_root)) if a.e0r_root else load_points()
     json.dump(chk, open(out / "inputs_check.json", "w"), indent=1, default=str)
     log(f"inputs {chk}")
     profiles = ("recommended",) if a.quick else ALL_PROFILES
