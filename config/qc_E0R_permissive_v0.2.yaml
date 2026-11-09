@@ -1,0 +1,64 @@
+# E0-QC-R v0.2 (permissive). Soglie IDENTICHE a config/qc_permissive.yaml (v0.1, intatto): nessuna soglia
+# cambiata dalle verifiche R1-R5 (e0/QC_R_CRITERIA_E0.md). Cambiano solo policy e schema.
+profile_name: permissive
+policy_file: flag_policy_E0R_v0.2.csv   # E0-QC-R: unica fonte di verità delle azioni
+flag_schema: ../e0/qc_flag_schema_E0_v0.2.yaml  # severità flag table derivate dalla policy
+
+physical_limits:
+  temp_min_c: -40.0
+  temp_max_c: 60.0
+  humidity_min_pct: 0.0
+  humidity_max_pct: 100.0
+  pressure_min_mbar: 850.0
+  pressure_max_mbar: 1100.0
+
+gps:
+  max_speed_kmh_absolute: 180.0        # THR-GPS-005
+  gps_jump_distance_m: 120.0           # THR-GPS-001
+  gps_jump_dt_s: 3.0                   # THR-GPS-001
+  acceleration_ms2_abs: 6.0            # THR-GPS-006
+  freeze_speed_threshold_kmh: 0.5      # THR-GPS-002
+  coord_repeated_tolerance_m: 3.0      # THR-GPS-003
+  isolated_outlier_excess_m: 60.0      # THR-GPS-004
+  speed_disagreement_abs_kmh: 12.0     # THR-GPS-007
+  speed_disagreement_rel_fraction: 0.50  # THR-GPS-007
+  aoi_geojson: data/aoi/bologna_e0_aoi_v0.1.geojson  # E0 AOI; qc_coord_outside_aoi
+
+warmup:
+  window_size: 5                       # THR-WARM-001 (legacy, rows, no-context mode)
+  window_size_s: 5.0                   # THR-WARM-001B (time-based smoothing window)
+  slope_threshold_c_per_s: 0.03        # THR-WARM-002
+  min_stable_seconds: 30               # THR-WARM-003
+  max_window_s: 300.0                  # THR-WARM-004
+  min_ventilated_duration_s: 20.0      # THR-WARM-005
+
+time:
+  legacy_nonpositive_dt_segment_break: false  # R1 fix: dt=0 non apre un segmento
+  min_samples_for_cadence_estimate: 20  # THR-TIME-001
+  fallback_expected_dt_s: 1.0           # THR-TIME-001
+  outlier_multiplier: 8.0               # THR-TIME-004
+  gap_short_multiplier: 2.5             # THR-TIME-002
+  gap_long_multiplier: 6.0              # THR-TIME-003
+  gap_absolute_floor_s: 1.0             # THR-TIME-005
+
+thermal:
+  spike_window_s: 5.0                  # THR-THERM-001
+  spike_mad_multiplier: 3.0            # THR-THERM-002
+  spike_floor_c: 0.2                   # THR-THERM-003
+  rate_anomaly_threshold_c_per_s: 0.35  # THR-THERM-004
+  rate_anomaly_persistence_s: 20.0     # THR-THERM-005
+  plateau_std_epsilon_c: 0.02          # THR-THERM-006
+  plateau_min_duration_s: 120.0        # THR-THERM-007
+
+ventilation:
+  low_speed_threshold_kmh: 7.0         # THR-VENT-001
+  day_start_local_hour: 7.0            # THR-VENT-002
+  day_end_local_hour: 20.0             # THR-VENT-002
+
+stops:
+  min_significant_stop_s: 15.0         # THR-STOP-001
+  recovery_min_duration_s: 15.0        # THR-STOP-002
+
+filtering:
+  strict_keep_threshold: 0
+  relaxed_keep_threshold: 1

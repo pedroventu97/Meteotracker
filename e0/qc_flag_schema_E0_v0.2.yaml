@@ -1,0 +1,152 @@
+# E0 QC flag schema v0.2 (E0-QC-R, 2026-11-09). Severità NON statiche: derivate per profilo da
+# config/flag_policy_E0R_v0.2.csv (unica fonte di verità). Criteri: e0/QC_R_CRITERIA_E0.md. v0.1 intatto.
+schema_version: E0-0.2
+date: '2026-11-09'
+supersedes: e0/qc_flag_schema_E0_v0.1.yaml (intatto)
+severity_source: policy
+policy_file: config/flag_policy_E0R_v0.2.csv
+severity_rule:
+  exclude: l'azione di policy esclude al profilo della run
+  warn: WARNING_ONLY, o EXCLUDE_* che non esclude a quel profilo
+  info: INFO_ONLY, SEGMENT_BREAK
+  not_emitted: NOT_APPLICABLE (segnali interni, alias legacy)
+policy:
+  flags_never_delete: true
+  raw_untouched: true
+  keep_raw: true
+  every_exclusion_verifiable: true
+record_fields:
+  flag_id:
+    type: string
+    example: E0F-000001
+  canonical_campaign_id:
+    type: string
+  source_file:
+    type: string
+    note: path relativo a data/raw
+  source_row:
+    type: int
+    note: indice riga 0-based nel CSV raw
+  observation_id:
+    type: string
+    rule: <sha256_file[:12]>:<source_row>
+  flag_code:
+    type: string
+  reason:
+    type: string
+    note: testo leggibile (IT)
+  rule_id:
+    type: string
+    example: THR-GPS-001
+  qc_profile:
+    enum:
+    - permissive
+    - recommended
+    - restrictive
+  threshold:
+    type: string
+  value_observed:
+    type: string
+  severity:
+    enum:
+    - info
+    - warn
+    - exclude
+  reversible:
+    const: true
+  applied_by:
+    type: string
+  applied_at:
+    type: datetime
+    tz: Europe/Rome ISO8601
+  code_commit:
+    type: string
+    source: git HEAD della run (suffisso -dirty se albero non pulito)
+  config_fingerprint:
+    type: string
+    source: qc_config_fingerprint
+legacy_aliases:
+  qc_time_duplicate: qc_duplicate_timestamp
+  qc_time_order: qc_nonmonotonic_timestamp
+  qc_temp_spike: qc_temp_isolated_spike
+  qc_impossible_acceleration: qc_unrealistic_acceleration
+  qc_time_nonpositive_dt: internal (dt=0 -> qc_duplicate_timestamp; dt<0 -> qc_nonmonotonic_timestamp)
+sub_signals_info:
+  qc_gps_jump: qc_spatial_jump
+  qc_isolated_position_outlier: qc_spatial_jump
+flag_codes:
+- code: DUP_BYTE_IDENTICAL
+  level: file
+  severity: exclude
+  rule: manifest.duplicate_type
+- code: DUP_REDUCED_REEXPORT
+  level: file
+  severity: exclude
+  rule: manifest.duplicate_type
+- code: qc_time_parse
+- code: qc_nonmonotonic_timestamp
+- code: qc_duplicate_timestamp
+- code: qc_sampling_gap_short
+  rule: THR-TIME-002
+  threshold_rec: 2x dt
+- code: qc_sampling_gap_long
+  rule: THR-TIME-003
+  threshold_rec: 5x dt
+- code: qc_coord_missing
+- code: qc_gps_jump
+  rule: THR-GPS-001
+  threshold_rec: 80 m / 2 s
+- code: qc_isolated_position_outlier
+  rule: THR-GPS-004
+  threshold_rec: 40 m
+- code: qc_spatial_jump
+- code: qc_gps_freeze
+  rule: THR-GPS-002
+  threshold_rec: 0.5 km/h
+- code: qc_possible_gps_freeze
+- code: qc_stationary
+- code: qc_coord_repeated
+  rule: THR-GPS-003
+  threshold_rec: 2.0 m
+- code: qc_coord_outside_aoi
+  note: AOI wired to data/aoi/bologna_e0_aoi_v0.1.geojson (Comune di Bologna); NA solo se lat/lon missing
+- code: qc_off_network_possible
+- code: qc_unrealistic_speed
+  rule: THR-GPS-005
+  threshold_rec: 150 km/h
+- code: qc_unrealistic_acceleration
+  rule: THR-GPS-006
+  threshold_rec: 5 m/s2
+- code: qc_speed_disagreement
+  rule: THR-GPS-007
+  threshold_rec: 8 km/h o 35%
+- code: qc_low_speed_device
+  rule: THR-VENT-001
+  threshold_rec: 7 km/h (07-20 locale)
+- code: qc_low_speed_gps
+- code: qc_low_ventilation_possible
+  rule: THR-VENT-001
+- code: qc_stop_event
+- code: qc_post_stop_recovery
+  rule: THR-STOP-002
+  threshold_rec: 30 s
+- code: qc_segment_restart_recovery
+- code: qc_temp_impossible
+  threshold_rec: '[-40,60] C'
+- code: qc_humidity_impossible
+  threshold_rec: '[0,100] %'
+- code: qc_pressure_impossible
+  threshold_rec: '[850,1100] mbar'
+- code: qc_temp_isolated_spike
+  rule: THR-THERM-002/003
+  threshold_rec: 3 MAD, 0.2 C
+- code: qc_temp_rate_anomaly
+  rule: THR-THERM-004/005
+  threshold_rec: 0.25 C/s per 20 s
+- code: qc_sensor_plateau_possible
+  rule: THR-THERM-006/007
+  threshold_rec: 0.02 C per 120 s
+- code: qc_sensor_stabilization
+  rule: THR-WARM-002/003
+  threshold_rec: 0.02 C/s, 60 s
+- code: qc_duplicate_record
