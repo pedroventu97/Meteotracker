@@ -47,8 +47,13 @@ def _analyze_segment(
         window_rows += 1
 
     med = temps_seg.rolling(window_rows, center=True, min_periods=1).median()
-    slope = med.diff() / slope_dt
+    # dt <= 0 rows (duplicated timestamps, kept inside the segment since the E0-QC-R R1 fix) have no defined
+    # slope: they inherit the previous row's stability state instead of breaking a stable run with 0/0 or inf.
+    nonpos = (slope_dt <= 0).fillna(False)
+    slope = med.diff() / slope_dt.where(~nonpos)
     row_stable = slope.abs() < slope_threshold
+    if nonpos.any():
+        row_stable = row_stable.astype("boolean").mask(nonpos).ffill().fillna(False).astype(bool)
 
     # Thermal-slope continuous-run search (independent of ventilation): the
     # window cannot close before this run has lasted min_stable_seconds.

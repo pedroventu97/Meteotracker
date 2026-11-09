@@ -55,6 +55,25 @@ def estimate_expected_sampling_interval_s(
     return float(clean.median())
 
 
+_DUPLICATE_RECORD_CONTENT = ("Lat", "Lon", "Temp[°C]", "Hum[%]", "Alt[m]", "Press[mbar]", "Speed[km/h]")
+
+
+def _duplicate_record(out: pd.DataFrame) -> pd.Series:
+    """True on the 2nd+ row of a run of rows that share the timestamp (dt == 0) AND carry identical
+    measured content (every available column of _DUPLICATE_RECORD_CONTENT equal to the previous row, NaN == NaN).
+    Distinct content under the same timestamp is timestamp jitter, not a duplicate record."""
+    dup_time = (out["dt_s"] == 0).fillna(False)
+    cols = [c for c in _DUPLICATE_RECORD_CONTENT if c in out.columns]
+    if not cols:
+        return pd.Series(False, index=out.index)
+    same = pd.Series(True, index=out.index)
+    for c in cols:
+        cur, prev = out[c], out[c].shift(1)
+        same &= (cur == prev) | (cur.isna() & prev.isna())
+    same.iloc[:1] = False
+    return (dup_time & same).astype(bool)
+
+
 def detect_time_issues(df: pd.DataFrame, config: dict | None = None) -> pd.DataFrame:
     out = df.copy()
     out["source_row"] = np.arange(len(out), dtype=int)
@@ -85,6 +104,11 @@ def detect_time_issues(df: pd.DataFrame, config: dict | None = None) -> pd.DataF
     out["qc_time_order"] = out["time_utc"].diff().lt(pd.Timedelta(0)) if enabled(config, "monotonicity") else False
     out["qc_time_duplicate"] = out["time_utc"].duplicated(keep=False) if enabled(config, "duplicates") else False
     out["qc_time_nonpositive_dt"] = out["dt_s"] <= 0
+    # E0-QC-R (R1): split the internal non-positive dt signal into its two physically distinct cases.
+    # dt == 0 is a duplicated timestamp (no elapsed time, so no acquisition interruption is possible);
+    # dt < 0 is a backward clock step (a real discontinuity of the time axis).
+    out["qc_time_backward_dt"] = out["dt_s"] < 0
+    out["qc_duplicate_record"] = _duplicate_record(out)
 
     time_cfg = (config or {}).get("time", {})
     min_samples = int(time_cfg.get("min_samples_for_cadence_estimate", 20))
@@ -116,11 +140,17 @@ def detect_time_issues(df: pd.DataFrame, config: dict | None = None) -> pd.DataF
     # Legacy-compatibility aliases: qc_time_gap used to be the sole gap signal
     # (dt_s > 2.0, hardcoded) and qc_new_segment the sole segment-break signal.
     out["qc_time_gap"] = is_gap
-    out["qc_segment_break"] = out["qc_sampling_gap_long"] | out["qc_time_nonpositive_dt"]
+    # E0-QC-R (R1, bug fix): a duplicated timestamp (dt == 0) must NOT open a new segment -- it used to, and each
+    # spurious segment then started a restart-recovery window (stabilization.py). Only a real long gap or a
+    # backward clock step breaks a segment. `time.legacy_nonpositive_dt_segment_break: true` restores the
+    # pre-fix behaviour, only to reproduce archived v0.1 outputs.
+    legacy_break = bool(time_cfg.get("legacy_nonpositive_dt_segment_break", False))
+    break_trigger = out["qc_time_nonpositive_dt"] if legacy_break else out["qc_time_backward_dt"]
+    out["qc_segment_break"] = out["qc_sampling_gap_long"] | break_trigger
     out["qc_new_segment"] = out["qc_segment_break"]
     out["segment_id"] = out["qc_segment_break"].cumsum()
 
-    break_reason = np.where(out["qc_time_nonpositive_dt"], "nonpositive_dt", "long_gap")
+    break_reason = np.where(break_trigger, "nonpositive_dt" if legacy_break else "backward_dt", "long_gap")
     start_reason_at_row = pd.Series(
         np.where(out["qc_segment_break"], break_reason, "campaign_start"), index=out.index
     )

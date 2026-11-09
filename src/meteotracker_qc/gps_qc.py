@@ -157,9 +157,10 @@ def detect_gps_issues(df: pd.DataFrame, config: dict | None = None) -> pd.DataFr
             float(time_cfg.get("gap_long_multiplier", 5.0)) * expected_dt_s,
             float(time_cfg.get("gap_absolute_floor_s", 1.0)),
         )
-        nonpositive = out["dt_s"] <= 0
+        # dt == 0 (duplicated timestamp) does not break a segment (E0-QC-R R1); a backward step does.
+        backward = out["dt_s"] < 0
         long_gap = out["dt_s"] > long_threshold
-        out["segment_id"] = (long_gap | nonpositive).cumsum()
+        out["segment_id"] = (long_gap | backward).cumsum()
 
     lat = _to_numeric(out.get("Lat", pd.Series(index=out.index, dtype=float)))
     lon = _to_numeric(out.get("Lon", pd.Series(index=out.index, dtype=float)))
@@ -195,7 +196,9 @@ def detect_gps_issues(df: pd.DataFrame, config: dict | None = None) -> pd.DataFr
     if n >= 2:
         coord_valid_prev = coord_valid.shift(1, fill_value=False)
         same_segment_prev = segment_id == segment_id.shift(1)
-        pair_valid = coord_valid & coord_valid_prev & same_segment_prev
+        # Kinematics need elapsed time: a dt <= 0 pair (duplicated timestamp, now inside a segment) has no
+        # defined speed, so it is excluded from the pair set instead of dividing by zero.
+        pair_valid = coord_valid & coord_valid_prev & same_segment_prev & (dt_s > 0).fillna(False)
 
         lat_prev = lat.shift(1)
         lon_prev = lon.shift(1)

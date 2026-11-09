@@ -37,7 +37,12 @@ class MeteotrackerQC:
         self.config_path = Path(config_path)
         self.config = yaml.safe_load(self.config_path.read_text(encoding="utf-8"))
         self.profile_name = self.config.get("profile_name", "recommended")
-        policy_path = self.config_path.parent / "flag_policy.csv"
+        # The policy file is selectable per config (E0-QC-R): `policy_file` (relative to the config directory)
+        # defaults to the historical flag_policy.csv, so existing YAMLs behave exactly as before.
+        policy_path = self.config_path.parent / str(self.config.get("policy_file", "flag_policy.csv"))
+        self.policy_path = policy_path
+        schema_ref = self.config.get("flag_schema")
+        self.flag_schema_path = (self.config_path.parent / str(schema_ref)).resolve() if schema_ref else None
         # An absent policy must not manufacture an all-kept scientific result.
         self.flag_policy = pd.read_csv(policy_path)
         if self.profile_name not in {"permissive", "recommended", "restrictive"}:
@@ -86,7 +91,16 @@ class MeteotrackerQC:
         input_path = Path(input_csv)
         output_path = Path(output_dir)
         output_path.mkdir(parents=True, exist_ok=True)
+        standardized, schema_report = self.compute_frame(input_path, checkpoint=checkpoint)
+        self._write_outputs(standardized, schema_report, input_path, output_path, checkpoint, diagnostics)
+        return standardized
 
+    def compute_frame(self, input_csv: str | Path, *, checkpoint=None) -> tuple[pd.DataFrame, pd.DataFrame]:
+        """Run every detector and the flag policy on one raw CSV, in memory only (no file is written)."""
+        if checkpoint is None:
+            def checkpoint():
+                return None
+        input_path = Path(input_csv)
         raw = pd.read_csv(input_path, na_values=["-"])
         raw["source_file"] = input_path.name
         raw["source_row"] = np.arange(len(raw), dtype=int)
@@ -141,7 +155,9 @@ class MeteotrackerQC:
             "inferred_local_high_confidence",
         })
         standardized["use_for_satellite_comparison"] = standardized["use_for_raw_timeseries"] & standardized["gps_valid"] & (~standardized["qc_sensor_stabilization"]) & timezone_safe
+        return standardized, schema_report
 
+    def _write_outputs(self, standardized, schema_report, input_path, output_path, checkpoint, diagnostics) -> None:
         config_snapshot = yaml.safe_dump(self.config, sort_keys=False, allow_unicode=True)
         (output_path / "config_used.yaml").write_text(config_snapshot, encoding="utf-8")
         checkpoint()
@@ -188,7 +204,6 @@ class MeteotrackerQC:
         )
         (output_path / f"{input_path.stem}_report.md").write_text(report_text, encoding="utf-8")
         checkpoint()
-        return standardized
 
     @staticmethod
     def _build_segment_summary(standardized: pd.DataFrame) -> pd.DataFrame:
@@ -228,6 +243,10 @@ class MeteotrackerQC:
 
         Does not delete rows from `standardized` or touch `data/raw`.
         """
+        extra = {}
+        if self.flag_schema_path is not None:
+            # v0.2+ schema: severities derived per profile from this run's own policy (single source of truth).
+            extra = {"schema_path": self.flag_schema_path, "policy_df": self.flag_policy}
         return build_and_write_flag_table(
             standardized,
             output_path,
@@ -238,6 +257,7 @@ class MeteotrackerQC:
             duplicate_type=duplicate_type,
             config_fingerprint=config_fingerprint,
             code_commit=code_commit,
+            **extra,
         )
 
     def inventory(self, input_dir: str | Path) -> pd.DataFrame:

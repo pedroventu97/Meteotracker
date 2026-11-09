@@ -17,6 +17,8 @@ from zoneinfo import ZoneInfo
 import pandas as pd
 import yaml
 
+from .policy import _excludes_at_profile
+
 ROME = ZoneInfo("Europe/Rome")
 
 RECORD_COLUMNS = [
@@ -71,6 +73,14 @@ _REASON_IT: dict[str, str] = {
     "qc_sensor_plateau_possible": "Possibile plateau del sensore.",
     "qc_humidity_impossible": "Umidità fuori limiti fisici.",
     "qc_pressure_impossible": "Pressione fuori limiti fisici.",
+    "qc_duplicate_timestamp": "Timestamp duplicato (stesso istante della riga adiacente).",
+    "qc_duplicate_record": "Record duplicato: stesso timestamp e contenuto identico alla riga precedente.",
+    "qc_nonmonotonic_timestamp": "Timestamp all'indietro (ordine non monotono).",
+    "qc_spatial_jump": "Salto spaziale (salto GPS o outlier di posizione isolato).",
+    "qc_temp_isolated_spike": "Spike termico isolato.",
+    "qc_possible_gps_freeze": "Possibile freeze GPS (segnale ampio, diagnostico).",
+    "qc_low_speed_gps": "Bassa velocità GPS (ventilazione).",
+    "qc_stop_event": "Sosta significativa rilevata.",
 }
 
 _DUP_TYPE_TO_CODE = {
@@ -119,6 +129,61 @@ def severity_lookup(schema: dict[str, Any], profile: str = "recommended") -> dic
     return out
 
 
+_POLICY_ACTIONS_EMITTED = {
+    "EXCLUDE_ALL_SCIENTIFIC", "EXCLUDE_RECOMMENDED", "EXCLUDE_RESTRICTIVE", "WARNING_ONLY", "INFO_ONLY", "SEGMENT_BREAK",
+}
+
+
+def severity_from_policy(policy_df: pd.DataFrame, profile: str) -> dict[str, str]:
+    """Flag-table severity DERIVED from the flag policy for one profile (single source of truth, E0-QC-R R6).
+
+    exclude  <- the action excludes at `profile` (exactly the rule apply_flag_policy uses for keep_<profile>)
+    warn     <- WARNING_ONLY, or an EXCLUDE_* action that does not exclude at `profile`
+    info     <- INFO_ONLY, SEGMENT_BREAK
+    NOT_APPLICABLE rows (internal signals / legacy aliases) are not emitted.
+    """
+    out: dict[str, str] = {}
+    for code, action in zip(policy_df["flag_name"], policy_df["action"]):
+        action = str(action)
+        if action not in _POLICY_ACTIONS_EMITTED:
+            continue
+        if _excludes_at_profile(action, profile):
+            out[str(code)] = "exclude"
+        elif action.startswith("EXCLUDE_") or action == "WARNING_ONLY":
+            out[str(code)] = "warn"
+        else:
+            out[str(code)] = "info"
+    return out
+
+
+def resolve_severities(schema: dict[str, Any], profile: str, policy_df: pd.DataFrame | None) -> dict[str, str]:
+    """Severities for a flag-table build. Schema v0.1 (no `severity_source`): static per-code severities.
+    Schema v0.2+ (`severity_source: policy`): derived from `policy_df` for `profile`; file-level codes keep the
+    schema severity; every non-file schema code must exist in the policy (no silent drift between the two)."""
+    if str(schema.get("severity_source", "schema")) != "policy":
+        return severity_lookup(schema, profile)
+    if policy_df is None:
+        raise ValueError("schema has severity_source=policy but no policy_df was supplied")
+    derived = severity_from_policy(policy_df, profile)
+    policy_codes = set(policy_df["flag_name"].astype(str))
+    missing = []
+    for entry in schema.get("flag_codes") or []:
+        code = entry.get("code")
+        if not code:
+            continue
+        if entry.get("level") == "file":
+            derived[code] = str(entry.get("severity", "exclude"))
+        elif code not in policy_codes:
+            missing.append(code)
+    if missing:
+        raise ValueError(f"schema codes absent from the flag policy: {sorted(missing)}")
+    aliases = set((schema.get("legacy_aliases") or {}).keys())
+    leaked = sorted(aliases & set(derived))
+    if leaked:
+        raise ValueError(f"legacy alias codes must be NOT_APPLICABLE in the policy, found emitted: {leaked}")
+    return derived
+
+
 def rule_meta_lookup(schema: dict[str, Any]) -> dict[str, dict[str, str]]:
     out: dict[str, dict[str, str]] = {}
     for entry in schema.get("flag_codes") or []:
@@ -161,6 +226,7 @@ def build_flag_table(
     duplicate_type: str | None = None,
     include_file_level_duplicates: bool = True,
     extra_flag_columns: Iterable[str] | None = None,
+    policy_df: pd.DataFrame | None = None,
 ) -> pd.DataFrame:
     """Emit long-form flag rows for True ``qc_*`` columns in ``df``.
 
@@ -173,7 +239,7 @@ def build_flag_table(
         row (``source_row`` = -1) if ``include_file_level_duplicates``.
     """
     schema_payload = schema if schema is not None else load_flag_schema(schema_path)
-    severities = severity_lookup(schema_payload, qc_profile)
+    severities = resolve_severities(schema_payload, qc_profile, policy_df)
     meta = rule_meta_lookup(schema_payload)
     when = applied_at or datetime.now(ROME)
     if when.tzinfo is None:

@@ -78,7 +78,8 @@ def detect_meteo_issues(df: pd.DataFrame, config: dict | None = None) -> pd.Data
     # Rate of change, gated on segment continuity: never evaluated across a
     # gap (NaN there, not a fabricated value).
     same_segment_prev = segment_id == segment_id.shift(1)
-    temp_rate_c_per_s = (temp.diff() / dt_s).where(same_segment_prev)
+    # dt <= 0 (duplicated timestamp inside a segment since the E0-QC-R R1 fix): rate undefined -> NaN, never inf.
+    temp_rate_c_per_s = (temp.diff() / dt_s.where(dt_s > 0)).where(same_segment_prev)
     out["temp_rate_c_per_s"] = temp_rate_c_per_s
 
     elevated = (temp_rate_c_per_s.abs() > rate_anomaly_threshold).fillna(False)
