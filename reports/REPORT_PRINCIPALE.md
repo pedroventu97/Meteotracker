@@ -82,7 +82,8 @@ Prodotti finali: poster e figure.
 - Una validazione con stazioni fisse (ARPAE, Netatmo) e con date tenute da parte.
 - Il confronto LST–Tair con finestra ±30 min (sensibilità ±15 e ±60).
 - Completare validazione scientifica del QC E0 / split (flag table, day/route/spatial_block) dopo il push.
-- Allineare `README.md` al manifest attuale (vedi discrepanza sotto).
+- Allineare `README.md` al manifest attuale (vedi discrepanza sotto). **Fatto 09/11/2026.**
+- Decidere quale QC E0 è ufficiale: `keep_recommended` della pipeline o le severity `exclude` di `flag_table_E0` (accordo per riga 48,6%; vedi entry 09/11).
 
 ## Discrepanze note
 - `README.md` (modificato il 09/09/2026) **non contiene "34 campagne"**: la frase indicata non è stata trovata. Il README riporta invece dati superati:
@@ -90,6 +91,7 @@ Prodotti finali: poster e figure.
   - riga 119: "By default, `run_qc.py` processes only the 44 canonical campaigns (`exclude_from_analysis == False` in the manifest)…".
   - Il manifest ufficiale campaign_manifest.csv è dal 5/11/2026 il contenuto E0 (60 righe / 55 canoniche; SHA256 81C903DE…C264); la copia datata resta campaign_manifest_20261015T0835.csv / campaign_manifest_E0_20261015T0835.csv. Archivio pre-E0 (44 canoniche): campaign_manifest_preE0_44canonical_20260731.csv.
   - Il README non è stato modificato.
+  - **Risolto il 09/11/2026:** `README.md` riga 119 ora indica **55** canoniche nel manifest ufficiale E0; il 44 resta solo come storia (archivio `campaign_manifest_preE0_44canonical_20260731.csv`, albero legacy `outputs/recommended/` a 44). Anche `docs/GATE_2_1_STATUS.md` §2 allineato (55; «al momento del Gate 2.1 erano 44»). Gli altri report storici con 44 non sono stati toccati.
   - Il "34" corrisponde invece al numero di **corridoi** di corridors_v2.
 
 ## Indice output datati
@@ -107,6 +109,7 @@ Prodotti finali: poster e figure.
 - [data/aoi/bologna_e0_aoi_v0.1.geojson](../data/aoi/bologna_e0_aoi_v0.1.geojson)
 - [outputs/e0_qc_split_20261105T1703/](../outputs/e0_qc_split_20261105T1703/) (locale; non in git, ~458 MB)
 - [outputs/lst_campaigns_multiday_20261018T2218/](../outputs/lst_campaigns_multiday_20261018T2218/)
+- [outputs/p1_repeatability_E0_20261109T1041/summary.md](../outputs/p1_repeatability_E0_20261109T1041/summary.md) (locale; non in git) · metodo [e0/P1_REPEATABILITY_E0.md](../e0/P1_REPEATABILITY_E0.md)
 
 ## Changelog
 - **15/10/2026 19:40** – Creazione del report principale. Nessun equivalente esistente: in `reports/` ci sono solo l'audit QC del 25/07, il report di sessione del 31/07 e quello di pulizia del 25/07; in `docs/` ci sono `GATE_2_1_STATUS.md` e simili, che sono specifici di un singolo gate. Risultati inseriti fino a `short_dt_anomaly_20261015T1927`.
@@ -125,3 +128,21 @@ Prodotti finali: poster e figure.
     - **Passo 4 (~17:03 Europe/Rome):** output nuovo outputs/e0_qc_split_20261105T1703/ — **55/55** campagne OK, 0 failed. lag_table_E0.csv **165735** righe (warn 105846 / exclude 59857 / info 32). Top flag: qc_segment_restart_recovery 27253; qc_speed_disagreement 27040; qc_low_ventilation_possible 20066; qc_low_speed_device 18852; qc_unrealistic_acceleration 18663; qc_coord_repeated 15254; qc_sensor_stabilization 9560; qc_stationary 8549; qc_gps_freeze 8299; **qc_coord_outside_aoi 6566**. Split: n_obs 72505; n_days 17; n_routes non-null 604 (obs: cv2 36731 / seg 15262 / NA 20512); n_spatial_blocks 570; routes ≥3 campagne 40. **LCZ WARNING:** nessun asset sotto data/; usato D:\projects\LCZ\LCZ_PRISMA.shp (coverage 0,9148). Helper: e0/run_e0_step4_qc_split.py, e0/build_split_assignments_e0.py. Nessun overwrite 20261015/18; raw intatto. Albero QC **non** committato (~458 MB): citato qui.
     - Note scientifiche: i flag QC non cancellano mai; tenere separati temporale vs spaziale; catalogo ufficiale = manifest E0 a **55** canoniche (non più 44). V18 resta baseline congelata / non filone guida (vedi entry 18/10).
 - **06/11/2026** – Passi E0 5–6: aggiornamento di questo changelog; commit del lavoro E0 locale + push del branch `feat/meteotracker-windows-app` (inclusi i commit locali precedenti non ancora su origin). Niente force-push; niente delete raw; output storici 20261015/18 non toccati.
+- **09/11/2026 ~10:55** - P1 ripetibilità sullo split E0 (autorizzato da Marco il 9/11, via coordinatore). Nuovo output `outputs/p1_repeatability_E0_20261109T1041/` ([summary.md](../outputs/p1_repeatability_E0_20261109T1041/summary.md); locale, non in git). Codice: `src/meteotracker_qc/p1_repeatability/`, `e0/run_p1_repeatability_e0.py`, test `tests/test_p1_repeatability.py`, metodo `e0/P1_REPEATABILITY_E0.md`. Livello: IMPLEMENTATO / TESTATO / NON VALIDATO. Metodo 20261015 riusato: R = Σcov/Σ√(var·var), r di Fisher, bootstrap per campagna, celle 50 m. Novità: località E0 (route, spatial_block 500 m), maschere QC permissive/recommended/restrictive + flag-table, coppie separate same_campaign / stesso giorno / giorni diversi, leave-one-campaign/day/route/block, ICC per località. FATTI (dagli output):
+    - **Coppie di giorni diversi, recommended:**
+        - route centered R 0,42 [0,19; 0,54] (781 coppie, 46 campagne, 24 route); detrended 0,22 [0,01; 0,35];
+        - blocchi centered 0,23 [0,10; 0,39] (2285 coppie, 83 blocchi); **blocchi detrended 0,04 [−0,03; 0,11], IC include 0**;
+        - permissive simile (route 0,38 / 0,22; blocchi 0,25 / 0,05).
+    - **Restrictive e flag-table: tutti gli IC includono 0** (route centered 0,12 [−0,30; 0,48] e −0,01 [−0,27; 0,30]), con 128 e 127 coppie e 14 e 15 route.
+    - **Leave-one-* (recommended):** nessuna esclusione porta R ≤ 0, ma R route centered passa da 0,42 a 0,17 senza cv2_004 (la salita). Intervalli: campaign 0,37–0,44; day 0,30–0,46; route 0,17–0,46; block 0,25–0,44.
+    - **Temporale vs spaziale:** coppie same-campaign (Δt mediano 21 min) solo 15 su 928 sulle route, cioè **quota 1,6%** (blocchi 1,9%). R same-campaign 0,51 [0,29; 0,64] e stesso giorno 0,42 [0,02; 0,61]: la ripetibilità a breve Δt resta non separabile dal contesto del giro (come short_dt 20261015, share 1,0).
+    - **Livello località (recommended):**
+        - ICC tra località: route 0,34 [0,21; 0,47], blocchi 0,35 [0,20; 0,49] (IC jackknife per campagna);
+        - dopo la quota (lineare) l'ICC scende a 0,26 [0,07; 0,45] e 0,17 [0,04; 0,30].
+    - **Potenza (recommended):**
+        - località con almeno 3 campagne dopo QC: 25 route su 195 e 93 blocchi su 408 (lo split dichiarava 40 route su tutte le osservazioni pre-QC);
+        - IC per località sopra 0 solo per 2 route su 24 e 9 blocchi su 83.
+    - **Verdetto:** ripetibilità inter-giorno modesta, diversa da 0 con recommended/permissive, in larga parte gradiente a grande scala o quota. Non supportate: strutture sotto i 500 m, affermazioni per singola località, conclusioni con le maschere restrictive o flag-table, separazione temporale/spaziale a breve Δt, effetto urbano.
+    - **Discrepanza (blocker dati):** le severity `exclude` di `flag_table_E0` sono etichette statiche per codice e non coincidono con `keep_recommended`: accordo per riga 48,6%, 46 163 righe con flag exclude contro 16 887 escluse da recommended. Il P1 usa `keep_<profilo>` come principale e la flag-table letterale come sensibilità. Serve una decisione di Marco.
+    - Nessun input LST/LCZ (regola 2019–2022 non applicabile); V18 non toccato. Nessun overwrite di 20261015/18 o e0_qc_split; raw intatto. Le cartelle `..._20261109T1029_quick` e `..._20261109T1030` sono superate (marcate SUPERSEDED.txt, non cancellate).
+- **09/11/2026** - README: allineate le occorrenze del conteggio canonico corrente da 44 a **55** (`README.md` riga 119; `docs/GATE_2_1_STATUS.md` §2). I riferimenti storici a 44 sono mantenuti come storia. Solo documentazione.
