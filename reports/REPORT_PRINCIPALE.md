@@ -87,6 +87,7 @@ Prodotti finali: poster e figure.
   - Audit del 09/11 (`outputs/qc_mask_audit_E0_20261109T1113/`): proposta (non decisione) di una maschera armonizzata con unica fonte `config/flag_policy.csv`, con correzione preliminare dei cambi segmento da dt = 0. **Nessuna QC dichiarata ufficiale.**
   - E0-QC-R del 09/11: policy v0.2 con flag table e keep coerenti per costruzione; opzioni in `e0/RAPPORTO_E0_QC_R.md` ?7. **Decisione ancora di Marco.**
   - Final validation E0-QC-R del 09/11 (`e0/RAPPORTO_FINAL_VALIDATION_E0_QC_R.md`): raccomandazione **CHANGES REQUIRED**, limitata al rilevatore di warm-up (proposta P-0527, non applicata). **Nessuna QC ufficiale.**
+  - Pre-registrazione warm-up v0.3 del 09/11 (`e0/PREREG_WARMUP_v0.3.md`): proposta cap 300 s anche per conferma tardiva; E1 condizionata, E2 non adottata. **Non implementata; decisione di Marco.**
 
 ## Discrepanze note
 - `README.md` (modificato il 09/09/2026) **non contiene "34 campagne"**: la frase indicata non è stata trovata. Il README riporta invece dati superati:
@@ -165,3 +166,9 @@ Prodotti finali: poster e figure.
   - Test: `test_runtime_import_closure_is_in_the_installed_package` falliva dal 15/10 (`0bbbb16`), quindi non è una regressione. Fix: `corridors_v2/validate.py` ora ha `main()`, con output byte-identici. Suite completa 624 passati, 1 saltato (passa con --real-data), 0 falliti.
   - Schema: le copie v0.2 in `resources/` puntano allo schema incluso nel pacchetto, byte-identico al canonico (sha256 11edae4f…). Verificato da un wheel installato con cwd estranea.
   - P1 (riuso degli output validati, più una sensibilità esplorativa P-0527): sulla popolazione comune |ΔR| ≤ 0,007. R route su popolazione propria: v0.1 0,42, v0.2 0,34, v0.2+cap 0,43 (effetto di popolazione del warm-up). Senza cv2_004 l'IC include 0. Servono ≥ 400 coppie diff-day.
+
+- **09/11/2026 ~15:45** - Pre-registrazione della regola di warm-up v0.3, fase A (autorizzata da Marco il 9/11 alle 14:53). **Solo analisi: v0.3 NON implementata; nessuna modifica a codice qc, config, severità o v0.1/v0.2; nessuna QC ufficiale. Nessun R calcolato in questa fase.** Documento: [e0/PREREG_WARMUP_v0.3.md](../e0/PREREG_WARMUP_v0.3.md) (copia e output in `outputs/warmup_prereg_20261109T1455/`, locali, non in git). FATTI:
+  - Campagne colpite verificate: esattamente 4 (05-27 13:08 è una delle 4, non una quinta); 3 sono avvii warm (1–9 min dalla sessione precedente) senza transitorio, con offset iniziali negativi (variabilità di percorso). 02-20 (cold) ha un transitorio vero ma breve (t_q 143 s).
+  - Test di transitorio D: 7/30 real start contro 3/29 pseudo-start (Fisher p = 0,16); t_q mediano 250 s. Avvii cold: eccesso di |offset| solo nel primo minuto (+0,28 °C, IC include 0), nessun eccesso oltre 300 s (+0,10 [−0,18; 0,32]). Hum/DP: nessun segnale oltre il primo minuto. Tir/Tsur, tensioni, temperatura interna, log di accensione e altri dispositivi simultanei: non disponibili.
+  - Criterio fissato prima di R: soglia minima in {120, 180, 300, 600} ≥ t_q mediano e ≥ punto medio AMT 2024 (255 s) → **T_cap = 300 s**, applicato anche alla conferma tardiva. E1 (transitorio confermato, fino a 900 s) condizionata a un test prospettico (falsi positivi attuali 10,3 % > 10 %). E2 (warm start) non adottata.
+  - Atteso: 10.114 righe warm-up (v0.2: 13.148); keep_recommended 62.191 (v0.2: 59.209); 05-27 13:08 → 225 righe; 47 campagne identiche a v0.2. Test di accettazione AT-1…AT-8 nel documento; R non è criterio (AT-8). Sezione §7.3 (R descrittivo) da aggiungere in fase B.
