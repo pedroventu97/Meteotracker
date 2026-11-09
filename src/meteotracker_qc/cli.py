@@ -58,6 +58,8 @@ def build_parser() -> argparse.ArgumentParser:
 
 def main(argv: list[str] | None = None) -> int:
     args = build_parser().parse_args(argv)
+    if args.json:
+        _use_utf8_json_streams()
     service = ApplicationService(args.workspace)
     try:
         if args.command == "sessions":
@@ -108,6 +110,19 @@ def main(argv: list[str] | None = None) -> int:
     if isinstance(payload, dict) and payload.get("status") == "fail":
         return 2
     return 0
+
+
+def _use_utf8_json_streams() -> None:
+    """Machine-readable output is always UTF-8, independent of the Windows locale.
+
+    With a redirected stdout Python uses the ANSI code page (e.g. cp1252): non-ASCII
+    paths would become non-UTF-8 bytes and characters outside the code page would
+    raise UnicodeEncodeError. Encoding errors stay strict.
+    """
+    for stream in (sys.stdout, sys.stderr):
+        reconfigure = getattr(stream, "reconfigure", None)
+        if reconfigure is not None:
+            reconfigure(encoding="utf-8")
 
 
 def _print_human(command: str, payload: object) -> None:
