@@ -84,6 +84,7 @@ Prodotti finali: poster e figure.
 - Completare validazione scientifica del QC E0 / split (flag table, day/route/spatial_block) dopo il push.
 - Allineare `README.md` al manifest attuale (vedi discrepanza sotto). **Fatto 09/11/2026.**
 - Decidere quale QC E0 è ufficiale: `keep_recommended` della pipeline o le severity `exclude` di `flag_table_E0` (accordo per riga 48,6%; vedi entry 09/11).
+  - Audit del 09/11 (`outputs/qc_mask_audit_E0_20261109T1113/`): proposta (non decisione) di una maschera armonizzata con unica fonte `config/flag_policy.csv`, con correzione preliminare dei cambi segmento da dt = 0. **Nessuna QC dichiarata ufficiale.**
 
 ## Discrepanze note
 - `README.md` (modificato il 09/09/2026) **non contiene "34 campagne"**: la frase indicata non è stata trovata. Il README riporta invece dati superati:
@@ -110,6 +111,7 @@ Prodotti finali: poster e figure.
 - [outputs/e0_qc_split_20261105T1703/](../outputs/e0_qc_split_20261105T1703/) (locale; non in git, ~458 MB)
 - [outputs/lst_campaigns_multiday_20261018T2218/](../outputs/lst_campaigns_multiday_20261018T2218/)
 - [outputs/p1_repeatability_E0_20261109T1041/summary.md](../outputs/p1_repeatability_E0_20261109T1041/summary.md) (locale; non in git) · metodo [e0/P1_REPEATABILITY_E0.md](../e0/P1_REPEATABILITY_E0.md)
+- [outputs/qc_mask_audit_E0_20261109T1113/summary.md](../outputs/qc_mask_audit_E0_20261109T1113/summary.md) (locale; non in git) · metodo [e0/QC_MASK_AUDIT_E0.md](../e0/QC_MASK_AUDIT_E0.md)
 
 ## Changelog
 - **15/10/2026 19:40** – Creazione del report principale. Nessun equivalente esistente: in `reports/` ci sono solo l'audit QC del 25/07, il report di sessione del 31/07 e quello di pulizia del 25/07; in `docs/` ci sono `GATE_2_1_STATUS.md` e simili, che sono specifici di un singolo gate. Risultati inseriti fino a `short_dt_anomaly_20261015T1927`.
@@ -146,3 +148,12 @@ Prodotti finali: poster e figure.
     - **Discrepanza (blocker dati):** le severity `exclude` di `flag_table_E0` sono etichette statiche per codice e non coincidono con `keep_recommended`: accordo per riga 48,6%, 46 163 righe con flag exclude contro 16 887 escluse da recommended. Il P1 usa `keep_<profilo>` come principale e la flag-table letterale come sensibilità. Serve una decisione di Marco.
     - Nessun input LST/LCZ (regola 2019–2022 non applicabile); V18 non toccato. Nessun overwrite di 20261015/18 o e0_qc_split; raw intatto. Le cartelle `..._20261109T1029_quick` e `..._20261109T1030` sono superate (marcate SUPERSEDED.txt, non cancellate).
 - **09/11/2026** - README: allineate le occorrenze del conteggio canonico corrente da 44 a **55** (`README.md` riga 119; `docs/GATE_2_1_STATUS.md` §2). I riferimenti storici a 44 sono mantenuti come storia. Solo documentazione.
+- **09/11/2026 ~11:30** - Audit del disaccordo tra severity `exclude` di `flag_table_E0` e `keep_*` della pipeline (autorizzato da Marco il 9/11 alle 11:08, via coordinatore). **Nessuna QC è dichiarata ufficiale; nessuna config modificata.** Output `outputs/qc_mask_audit_E0_20261109T1113/` ([summary.md](../outputs/qc_mask_audit_E0_20261109T1113/summary.md); locale, non in git). Codice: `src/meteotracker_qc/qc_mask_audit.py`, `e0/run_qc_mask_audit_e0.py`, test `tests/test_qc_mask_audit.py`, metodo `e0/QC_MASK_AUDIT_E0.md`. Livello: IMPLEMENTATO / TESTATO / NON VALIDATO. FATTI (dagli output):
+    - 72 505 punti. Stato FT: exclude 46 163, warn-only 15 514, ok 10 828.
+    - Recommended: accordo 48,6% (κ 0,10). FT exclude ma pipeline tiene: 33 288. Pipeline scarta senza FT exclude: 4 012. Restrictive: accordo 70,4% (κ 0,35). Permissive: 36,3% (κ 0). L'accordo per campagna va dal 9% al 100%.
+    - Codici principali: qc_segment_restart_recovery 24 003 (schema exclude r. 50 vs policy INFO_ONLY r. 30); qc_unrealistic_acceleration 15 508 (exclude vs EXCLUDE_RESTRICTIVE); qc_gps_freeze 4 012 (schema warn vs EXCLUDE_RECOMMENDED); qc_post_stop_recovery 2 540 (exclude vs INFO_ONLY); qc_time_duplicate 572 (nessuna riga di policy).
+    - Meccanismo: la FT usa la severità fissa per codice dello schema E0 (`flag_table.py:106-119`); `keep_<p>` usa le azioni per profilo di `flag_policy.csv` (`policy.py:9-16`).
+    - 372 timestamp duplicati (dt = 0) generano 372 dei 482 cambi segmento (`time_qc.py:119`). Ne derivano circa 15 500 punti restart_recovery spuri (`stabilization.py:191`).
+    - Permissive non esclude nulla per scelta di progetto, non per bug: esclude solo EXCLUDE_ALL_SCIENTIFIC (`flag_policy.csv` r. 2, 31-33), che in E0 conta 0 punti. Le colonne `keep_*` di E0 sono proiezioni con le soglie di recommended (`policy.py:38-49`).
+    - P1 route, coppie di giorni diversi: recommended 0,42 [0,21; 0,55]; union 0,42 [0,21; 0,55]; consensus (rec ∧ nessun FT exclude) 0,01 [−0,26; 0,32], con 126 coppie invece di 781. Il segnale P1 dipende dalla maschera.
+    - Raccomandazione (solo proposta): unica fonte `flag_policy.csv`, con severità della FT derivata per profilo; correggere i cambi segmento da dt = 0; allineare unrealistic_acceleration, post_stop e restart_recovery, gps_freeze e gli alias; per i profili ufficiali permissive/restrictive rieseguire con le YAML proprie. Read-only: nessun overwrite di e0_qc_split, p1_repeatability, 20261015/18; raw intatto.
